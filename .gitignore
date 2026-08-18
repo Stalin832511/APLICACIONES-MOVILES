@@ -1,0 +1,28 @@
+# Flutter
+servihogar_connect/.dart_tool/
+servihogar_connect/build/
+servihogar_connect/.flutter-plugins
+servihogar_connect/.flutter-plugins-dependencies
+servihogar_connect/.packages
+servihogar_connect/coverage/
+
+# Android
+servihogar_connect/android/.gradle/
+servihogar_connect/android/local.properties/
+
+# ASP.NET Core / .NET
+ServiHogarConnect.API/bin/
+ServiHogarConnect.API/obj/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+
+# Logs
+*.log
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
