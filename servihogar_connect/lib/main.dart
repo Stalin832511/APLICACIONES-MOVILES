@@ -1,9 +1,15 @@
 import 'package:flutter/material.dart';
 import 'services/api_service.dart';
+import 'theme/app_theme.dart';
+import 'screens/solicitudes_screen.dart';
 
 void main() {
   runApp(const ServiHogarConnectApp());
 }
+
+// Cambia este valor para cada captura: 1.0 (normal), 1.5, 2.0 (fuente ampliada)
+// Antes de entregar el proyecto, vuelve este valor a 1.0.
+const double _debugTextScale = 1.0;
 
 class ServiHogarConnectApp extends StatelessWidget {
   const ServiHogarConnectApp({super.key});
@@ -12,8 +18,16 @@ class ServiHogarConnectApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'ServiHogar Connect',
-      theme: ThemeData(primarySwatch: Colors.indigo, useMaterial3: true),
-      home: const HomeScreen(),
+      theme: AppTheme.light(),
+      home: const MisSolicitudesScreen(),
+      builder: (context, child) {
+        return MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            textScaler: const TextScaler.linear(_debugTextScale),
+          ),
+          child: child!,
+        );
+      },
     );
   }
 }

@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace ServiHogarConnect.API.Models;
 
 public class SolicitudServicio
@@ -18,11 +20,11 @@ public class SolicitudServicio
 
     public decimal Longitud { get; set; }
 
-    // Relaciones
-    public Usuario Usuario { get; set; } = null!;
+    [JsonIgnore]
+    public Usuario? Usuario { get; set; }
 
-    public CategoriaServicio Categoria { get; set; } = null!;
+    [JsonIgnore]
+    public CategoriaServicio? Categoria { get; set; }
 
-    public ICollection<Cotizacion> Cotizaciones { get; set; }
-        = new List<Cotizacion>();
+    public ICollection<Cotizacion> Cotizaciones { get; set; } = new List<Cotizacion>();
 }
