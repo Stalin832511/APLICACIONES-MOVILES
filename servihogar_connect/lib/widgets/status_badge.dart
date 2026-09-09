@@ -1,101 +1,152 @@
 import 'package:flutter/material.dart';
-import '../theme/app_theme.dart';
 
 /// Estados posibles de una solicitud de servicio.
-enum RequestStatus { pendiente, enCamino, completado }
+enum RequestStatus {
+  pendiente,
+  enCamino,
+  completado,
+}
 
 extension RequestStatusParsing on RequestStatus {
-  /// Convierte el texto que llega de la API (campo "Estado")
-  /// al enum tipado. Cualquier valor no reconocido cae en pendiente.
-  static RequestStatus fromApiValue(String value) {
+  /// Convierte el texto recibido desde la API
+  /// al estado correspondiente.
+  ///
+  /// Si el valor no es reconocido,
+  /// se utiliza pendiente como estado seguro.
+  static RequestStatus fromApiValue(
+    String value,
+  ) {
     switch (value.toLowerCase().trim()) {
       case 'en camino':
       case 'en_camino':
       case 'encamino':
         return RequestStatus.enCamino;
+
       case 'completado':
       case 'completada':
       case 'finalizado':
+      case 'finalizada':
         return RequestStatus.completado;
+
       default:
         return RequestStatus.pendiente;
     }
   }
 }
 
-/// COMPONENTE REUTILIZABLE #1: StatusBadge
-///
-/// INTERFAZ PÚBLICA
-/// - Entrada:     status (RequestStatus) — obligatorio
-/// - Presentación: ninguna configuración extra; el color y texto
-///                 se derivan del token semántico correspondiente
-/// - Callback:    ninguno (es de solo lectura / informativo)
-/// - Contenido delegado: ninguno (no acepta widgets hijos)
-///
-/// No conoce la API ni realiza navegación: solo traduce un
-/// RequestStatus a una representación visual consistente.
+/// Componente reutilizable para mostrar
+/// visualmente el estado de una solicitud.
 class StatusBadge extends StatelessWidget {
   final RequestStatus status;
 
-  const StatusBadge({super.key, required this.status});
+  const StatusBadge({
+    super.key,
+    required this.status,
+  });
 
-  ({Color bg, Color fg, String label, IconData icon}) _visualFor(
-    AppStatusColors colors,
+  /// Obtiene la apariencia visual profesional
+  /// correspondiente a cada estado.
+  ({
+    Color bg,
+    Color fg,
+    Color border,
+    String label,
+    IconData icon,
+  }) _visualFor(
+    BuildContext context,
   ) {
     switch (status) {
       case RequestStatus.pendiente:
         return (
-          bg: colors.pendienteBg,
-          fg: colors.pendienteFg,
+          bg: const Color(0xFFFFF4D6),
+          fg: const Color(0xFF9A6700),
+          border: const Color(0xFFFFD666),
           label: 'Pendiente',
-          icon: Icons.schedule,
+          icon: Icons.schedule_rounded,
         );
+
       case RequestStatus.enCamino:
         return (
-          bg: colors.enCaminoBg,
-          fg: colors.enCaminoFg,
+          bg: const Color(0xFFE8F1FF),
+          fg: const Color(0xFF1769AA),
+          border: const Color(0xFFA9C9F7),
           label: 'En camino',
-          icon: Icons.directions_run,
+          icon: Icons.directions_car_filled_rounded,
         );
+
       case RequestStatus.completado:
         return (
-          bg: colors.completadoBg,
-          fg: colors.completadoFg,
+          bg: const Color(0xFFE5F7ED),
+          fg: const Color(0xFF16794A),
+          border: const Color(0xFFA8DFC1),
           label: 'Completado',
-          icon: Icons.check_circle,
+          icon: Icons.check_circle_rounded,
         );
     }
   }
 
   @override
-  Widget build(BuildContext context) {
-    final statusColors = Theme.of(context).extension<AppStatusColors>()!;
-    final v = _visualFor(statusColors);
+  Widget build(
+    BuildContext context,
+  ) {
+    final theme = Theme.of(context);
 
-    // Semantics: el color NO es el único medio de información —
-    // el texto y el ícono también comunican el estado.
+    final visual = _visualFor(context);
+
     return Semantics(
-      label: 'Estado de la solicitud: ${v.label}',
+      label:
+          'Estado de la solicitud: '
+          '${visual.label}',
       child: Container(
         padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.sm,
-          vertical: AppSpacing.xs,
+          horizontal: 10,
+          vertical: 6,
         ),
         decoration: BoxDecoration(
-          color: v.bg,
-          borderRadius: BorderRadius.circular(AppRadius.sm),
+          color: visual.bg,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: visual.border,
+            width: 1,
+          ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(v.icon, size: 14, color: v.fg),
-            const SizedBox(width: AppSpacing.xs),
-            Text(
-              v.label,
-              style: Theme.of(context)
-                  .textTheme
-                  .labelSmall
-                  ?.copyWith(color: v.fg),
+            Container(
+              width: 22,
+              height: 22,
+              decoration: BoxDecoration(
+                color: visual.fg.withValues(
+                  alpha: 0.12,
+                ),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                visual.icon,
+                size: 14,
+                color: visual.fg,
+              ),
+            ),
+            const SizedBox(
+              width: 7,
+            ),
+            Flexible(
+              child: Text(
+                visual.label,
+                maxLines: 1,
+                overflow:
+                    TextOverflow.ellipsis,
+                style:
+                    theme.textTheme.labelMedium
+                        ?.copyWith(
+                  color: visual.fg,
+                  fontWeight:
+                      FontWeight.w700,
+                  fontSize: 12.5,
+                  letterSpacing: 0.1,
+                ),
+              ),
             ),
           ],
         ),

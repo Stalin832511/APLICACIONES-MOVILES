@@ -1,35 +1,40 @@
 import 'package:flutter/material.dart';
+
 import '../theme/app_theme.dart';
 
-/// Estado de una operación asíncrona genérica (ej. una llamada HTTP).
-enum LoadStatus { cargando, listo, vacio, error }
+/// Estado de una operación asíncrona genérica,
+/// por ejemplo, una llamada HTTP.
+enum LoadStatus {
+  cargando,
+  listo,
+  vacio,
+  error,
+}
 
-/// COMPONENTE REUTILIZABLE #3: AsyncStateView<T>
+/// Componente reutilizable para representar los diferentes
+/// estados de una operación asíncrona.
 ///
-/// INTERFAZ PÚBLICA
-/// - Entrada (datos):
-///     status       (LoadStatus)      — en qué estado está la operación
-///     data         (T?)              — el dato ya cargado (si status == listo)
-///     errorMessage (String?)         — mensaje a mostrar si status == error
-/// - Configuración de presentación:
-///     emptyMessage (String)          — texto del estado vacío, personalizable
-/// - Callback:
-///     onRetry (VoidCallback?)        — botón "Reintentar" en error y vacío
-/// - Contenido delegado:
-///     builder (Widget Function(BuildContext, T)) — CÓMO dibujar el
-///     contenido cuando status == listo. Este es el punto clave de
-///     reutilización: AsyncStateView no sabe si T es una lista de
-///     solicitudes, un mapa de /health, o cualquier otra cosa.
+/// Interfaz pública:
+/// - status: estado actual de la operación.
+/// - data: dato cargado cuando el estado es [LoadStatus.listo].
+/// - errorMessage: mensaje mostrado cuando existe un error.
+/// - emptyMessage: texto mostrado cuando no existen datos.
+/// - onRetry: callback opcional para reintentar.
+/// - builder: función encargada de construir el contenido cargado.
 ///
-/// No hace fetch de datos (no conoce ApiService ni http): solo
-/// reacciona al LoadStatus que la pantalla le pasa.
+/// Este componente no realiza llamadas HTTP ni obtiene datos.
+/// Solamente representa visualmente el estado que recibe
+/// de la pantalla que lo utiliza.
 class AsyncStateView<T> extends StatelessWidget {
   final LoadStatus status;
   final T? data;
   final String? errorMessage;
   final String emptyMessage;
   final VoidCallback? onRetry;
-  final Widget Function(BuildContext context, T data) builder;
+  final Widget Function(
+    BuildContext context,
+    T data,
+  ) builder;
 
   const AsyncStateView({
     super.key,
@@ -37,14 +42,18 @@ class AsyncStateView<T> extends StatelessWidget {
     required this.builder,
     this.data,
     this.errorMessage,
-    this.emptyMessage = 'No hay elementos para mostrar',
+    this.emptyMessage =
+        'No hay elementos para mostrar',
     this.onRetry,
   });
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
+    final colorScheme =
+        Theme.of(context).colorScheme;
+
+    final textTheme =
+        Theme.of(context).textTheme;
 
     switch (status) {
       case LoadStatus.cargando:
@@ -52,8 +61,10 @@ class AsyncStateView<T> extends StatelessWidget {
           label: 'Cargando contenido',
           child: const Center(
             child: Padding(
-              padding: EdgeInsets.all(AppSpacing.xl),
-              child: CircularProgressIndicator(),
+              padding:
+                  EdgeInsets.all(AppSpacing.xl),
+              child:
+                  CircularProgressIndicator(),
             ),
           ),
         );
@@ -61,7 +72,10 @@ class AsyncStateView<T> extends StatelessWidget {
       case LoadStatus.error:
         return Center(
           child: Padding(
-            padding: const EdgeInsets.all(AppSpacing.lg),
+            padding:
+                const EdgeInsets.all(
+              AppSpacing.lg,
+            ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -71,18 +85,24 @@ class AsyncStateView<T> extends StatelessWidget {
                   size: 40,
                   semanticLabel: 'Error',
                 ),
-                const SizedBox(height: AppSpacing.sm),
+                const SizedBox(
+                  height: AppSpacing.sm,
+                ),
                 Text(
-                  errorMessage ?? 'Ocurrió un error inesperado',
+                  errorMessage ??
+                      'Ocurrió un error inesperado',
                   style: textTheme.bodyMedium,
-                  textAlign: TextAlign.center,
+                  textAlign:
+                      TextAlign.center,
                 ),
                 if (onRetry != null) ...[
-                  const SizedBox(height: AppSpacing.md),
-                  // Botón con área táctil mínima 48x48dp (por defecto en Material)
+                  const SizedBox(
+                    height: AppSpacing.md,
+                  ),
                   ElevatedButton(
                     onPressed: onRetry,
-                    child: const Text('Reintentar'),
+                    child:
+                        const Text('Reintentar'),
                   ),
                 ],
               ],
@@ -93,29 +113,44 @@ class AsyncStateView<T> extends StatelessWidget {
       case LoadStatus.vacio:
         return Center(
           child: Padding(
-            padding: const EdgeInsets.all(AppSpacing.lg),
+            padding:
+                const EdgeInsets.all(
+              AppSpacing.lg,
+            ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(
                   Icons.inbox_outlined,
-                  color: colorScheme.onSurfaceVariant,
+                  color:
+                      colorScheme
+                          .onSurfaceVariant,
                   size: 40,
-                  semanticLabel: 'Sin contenido',
+                  semanticLabel:
+                      'Sin contenido',
                 ),
-                const SizedBox(height: AppSpacing.sm),
+                const SizedBox(
+                  height: AppSpacing.sm,
+                ),
                 Text(
                   emptyMessage,
-                  style: textTheme.bodyMedium?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
+                  style:
+                      textTheme.bodyMedium
+                          ?.copyWith(
+                    color: colorScheme
+                        .onSurfaceVariant,
                   ),
-                  textAlign: TextAlign.center,
+                  textAlign:
+                      TextAlign.center,
                 ),
                 if (onRetry != null) ...[
-                  const SizedBox(height: AppSpacing.md),
+                  const SizedBox(
+                    height: AppSpacing.md,
+                  ),
                   OutlinedButton(
                     onPressed: onRetry,
-                    child: const Text('Actualizar'),
+                    child:
+                        const Text('Actualizar'),
                   ),
                 ],
               ],
@@ -125,11 +160,13 @@ class AsyncStateView<T> extends StatelessWidget {
 
       case LoadStatus.listo:
         if (data == null) {
-          // Estado inconsistente (no debería pasar si la pantalla
-          // gestiona bien el LoadStatus), se trata como vacío.
           return const SizedBox.shrink();
         }
-        return builder(context, data as T);
+
+        return builder(
+          context,
+          data as T,
+        );
     }
   }
 }

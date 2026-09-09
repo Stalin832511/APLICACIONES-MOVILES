@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using ServiHogarConnect.API.Data;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
@@ -10,10 +12,18 @@ namespace ServiHogarConnect.API.Controllers;
 [Route("api/auth")]
 public class AuthController : ControllerBase
 {
-    [HttpPost("login")]
-    public IActionResult Login([FromBody] LoginRequest request)
+    private readonly AppDbContext _context;
+
+    public AuthController(AppDbContext context)
     {
-        // Usuario de prueba para demostrar autenticación JWT
+        _context = context;
+    }
+
+    [HttpPost("login")]
+    public async Task<IActionResult> Login(
+        [FromBody] LoginRequest request)
+    {
+        // Usuario de prueba para demostrar autenticación JWT.
         if (request.Email != "admin@servihogar.com" ||
             request.Password != "123456")
         {
@@ -23,11 +33,28 @@ public class AuthController : ControllerBase
             });
         }
 
+        // Buscamos el usuario real en PostgreSQL
+        // para obtener su IdUsuario.
+        var usuario = await _context.Usuarios
+            .FirstOrDefaultAsync(u => u.Email == request.Email);
+
+        if (usuario == null)
+        {
+            return Unauthorized(new
+            {
+                mensaje = "El usuario no existe en la base de datos"
+            });
+        }
+
         var claims = new[]
         {
             new Claim(
                 ClaimTypes.Name,
                 request.Email),
+
+            new Claim(
+                ClaimTypes.NameIdentifier,
+                usuario.IdUsuario.ToString()),
 
             new Claim(
                 ClaimTypes.Role,
@@ -56,7 +83,8 @@ public class AuthController : ControllerBase
             mensaje = "Autenticación exitosa",
             token = tokenGenerado,
             tipo = "Bearer",
-            usuario = request.Email
+            usuario = request.Email,
+            idUsuario = usuario.IdUsuario
         });
     }
 }

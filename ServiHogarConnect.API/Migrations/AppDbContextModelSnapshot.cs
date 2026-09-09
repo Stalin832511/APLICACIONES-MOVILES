@@ -186,6 +186,10 @@ namespace ServiHogarConnect.API.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("IdSolicitud"));
 
+                    b.Property<string>("ClientOperationId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<string>("Descripcion")
                         .IsRequired()
                         .HasColumnType("text");
@@ -213,6 +217,10 @@ namespace ServiHogarConnect.API.Migrations
                         .HasColumnType("numeric(11,8)");
 
                     b.HasKey("IdSolicitud");
+
+                    b.HasIndex("ClientOperationId")
+                        .IsUnique()
+                        .HasFilter("\"ClientOperationId\" IS NOT NULL");
 
                     b.HasIndex("Estado");
 
