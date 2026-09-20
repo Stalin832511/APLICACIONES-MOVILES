@@ -4,8 +4,8 @@ import '../widgets/status_badge.dart';
 
 import '../database/app_database.dart';
 import '../models/solicitud.dart';
+import '../network/jwt_refresh_test_service.dart';
 import '../services/api_service.dart';
-import '../theme/app_theme.dart';
 import '../widgets/async_state_view.dart';
 import '../widgets/service_request_card.dart';
 import 'crear_solicitud_screen.dart';
@@ -314,6 +314,37 @@ class _MisSolicitudesScreenState
     }
   }
 
+  /// Ejecuta una petición contra un endpoint protegido
+  /// utilizando el ApiClient de Dio.
+  ///
+  /// Esta función es temporal y se utiliza para demostrar
+  /// el flujo automático de renovación del JWT.
+  Future<void> _probarJwtRefresh() async {
+    try {
+      await JwtRefreshTestService.ejecutarPrueba();
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Prueba JWT completada correctamente.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Prueba JWT finalizada con error: $e',
+          ),
+        ),
+      );
+    }
+  }
+
   void _mostrarDetalle(SolicitudModel solicitud) {
     ScaffoldMessenger.of(context)
         .hideCurrentSnackBar();
@@ -399,6 +430,15 @@ class _MisSolicitudesScreenState
           ],
         ),
         actions: [
+          IconButton(
+            tooltip: 'Probar JWT Refresh',
+            icon: const Icon(
+              Icons.security_rounded,
+            ),
+            onPressed:
+                _probarJwtRefresh,
+          ),
+
           Padding(
             padding:
                 const EdgeInsets.only(right: 12),
