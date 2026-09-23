@@ -9,6 +9,7 @@ import '../services/api_service.dart';
 import '../widgets/async_state_view.dart';
 import '../widgets/service_request_card.dart';
 import 'crear_solicitud_screen.dart';
+import 'detalle_solicitud_screen.dart';
 
 class MisSolicitudesScreen extends StatefulWidget {
   final AppDatabase database;
@@ -346,47 +347,9 @@ class _MisSolicitudesScreenState
   }
 
   void _mostrarDetalle(SolicitudModel solicitud) {
-    ScaffoldMessenger.of(context)
-        .hideCurrentSnackBar();
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            Container(
-              width: 34,
-              height: 34,
-              decoration: BoxDecoration(
-                color: const Color(0xFF8B5CF6)
-                    .withValues(alpha: 0.16),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.description_outlined,
-                color: Color(0xFF8B5CF6),
-                size: 18,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                'Solicitud #${solicitud.id}',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 14,
-                ),
-              ),
-            ),
-          ],
-        ),
-        backgroundColor: const Color(0xFF1A1925),
-        behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.all(16),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(15),
-        ),
-        duration: const Duration(seconds: 2),
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => DetalleSolicitudScreen(solicitud: solicitud),
       ),
     );
   }
@@ -481,9 +444,7 @@ class _MisSolicitudesScreenState
                   const Color(0xFF1A1925),
               onRefresh:
                   _cargarSolicitudes,
-              child:
-                  AsyncStateView<
-                      List<SolicitudModel>>(
+              child: AsyncStateView<List<SolicitudModel>>(
                 status: _status,
                 data: _solicitudes,
                 errorMessage:

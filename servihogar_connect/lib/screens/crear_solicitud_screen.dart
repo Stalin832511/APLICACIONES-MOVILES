@@ -1,12 +1,15 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:drift/drift.dart' as drift;
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 
 import '../database/app_database.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
+import '../services/native/native_capabilities_service.dart';
 
 class CrearSolicitudScreen extends StatefulWidget {
   final AppDatabase database;
@@ -31,6 +34,23 @@ class _CrearSolicitudScreenState
   static const int _idCategoriaPlomeria = 1;
 
   bool _guardando = false;
+  bool _obteniendoUbicacion = false;
+  bool _tomandoFoto = false;
+
+  double? _latitud;
+  double? _longitud;
+  double? _precision;
+
+  XFile? _foto;
+
+  String? _mensajeUbicacion;
+  String? _mensajeCamara;
+
+  NativePermissionState _estadoUbicacion =
+      NativePermissionState.denied;
+
+  NativePermissionState _estadoCamara =
+      NativePermissionState.denied;
 
   @override
   void initState() {
@@ -50,6 +70,90 @@ class _CrearSolicitudScreenState
     super.dispose();
   }
 
+  // ============================================================
+  // OBTENER UBICACIÓN
+  // ============================================================
+
+  Future<void> _obtenerUbicacion() async {
+    if (_obteniendoUbicacion) return;
+
+    setState(() {
+      _obteniendoUbicacion = true;
+      _mensajeUbicacion = null;
+    });
+
+    final result =
+        await NativeCapabilitiesService.getCurrentLocation();
+
+    if (!mounted) return;
+
+    setState(() {
+      _obteniendoUbicacion = false;
+      _estadoUbicacion = result.permissionState;
+      _mensajeUbicacion = result.message;
+
+      if (result.position != null) {
+        _latitud = result.position!.latitude;
+        _longitud = result.position!.longitude;
+        _precision = result.position!.accuracy;
+      }
+    });
+
+    if (result.locationServiceDisabled) {
+      await _mostrarDialogoGPSDesactivado();
+      return;
+    }
+
+    if (result.permissionState ==
+        NativePermissionState.permanentlyDenied) {
+      await _mostrarDialogoAjustes(
+        titulo: 'Ubicación bloqueada',
+        mensaje:
+            'El permiso de ubicación está bloqueado. '
+            'Debes habilitarlo desde los ajustes de la aplicación.',
+      );
+    }
+  }
+
+  // ============================================================
+  // TOMAR FOTOGRAFÍA
+  // ============================================================
+
+  Future<void> _tomarFotografia() async {
+    if (_tomandoFoto) return;
+
+    setState(() {
+      _tomandoFoto = true;
+      _mensajeCamara = null;
+    });
+
+    final result =
+        await NativeCapabilitiesService.takePhoto();
+
+    if (!mounted) return;
+
+    setState(() {
+      _tomandoFoto = false;
+      _estadoCamara = result.permissionState;
+      _foto = result.image;
+      _mensajeCamara = result.message;
+    });
+
+    if (result.permissionState ==
+        NativePermissionState.permanentlyDenied) {
+      await _mostrarDialogoAjustes(
+        titulo: 'Cámara bloqueada',
+        mensaje:
+            'El permiso de cámara está bloqueado. '
+            'Debes habilitarlo desde los ajustes de la aplicación.',
+      );
+    }
+  }
+
+  // ============================================================
+  // CREAR SOLICITUD
+  // ============================================================
+
   Future<void> _crearSolicitud() async {
     final descripcion =
         _descripcionController.text.trim();
@@ -63,6 +167,15 @@ class _CrearSolicitudScreenState
     }
 
     if (_guardando) return;
+
+    // La ubicación se solicita en el momento de utilizarla.
+    if (_latitud == null || _longitud == null) {
+      _mostrarMensaje(
+        'Obtén primero la ubicación del servicio.',
+        esError: true,
+      );
+      return;
+    }
 
     setState(() {
       _guardando = true;
@@ -81,8 +194,6 @@ class _CrearSolicitudScreenState
       final clientOperationId =
           const Uuid().v4();
 
-      final ahora = DateTime.now();
-
       debugPrint(
         '========================================',
       );
@@ -98,14 +209,16 @@ class _CrearSolicitudScreenState
         'Descripción: $descripcion',
       );
       debugPrint(
+        'Latitud: $_latitud',
+      );
+      debugPrint(
+        'Longitud: $_longitud',
+      );
+      debugPrint(
         '========================================',
       );
 
       try {
-        // ==================================================
-        // INTENTO ONLINE
-        // ==================================================
-
         final solicitud =
             await ApiService.crearSolicitud(
           idUsuario: idUsuario,
@@ -114,8 +227,8 @@ class _CrearSolicitudScreenState
           clientOperationId:
               clientOperationId,
           descripcion: descripcion,
-          latitud: 0,
-          longitud: 0,
+          latitud: _latitud!,
+          longitud: _longitud!,
         );
 
         debugPrint(
@@ -154,67 +267,29 @@ class _CrearSolicitudScreenState
 
         Navigator.of(context).pop(true);
       } catch (e) {
-        // ==================================================
-        // MODO OFFLINE
-        // ==================================================
-
         debugPrint(
           'NO HAY CONEXIÓN O FALLÓ EL SERVIDOR.',
         );
-
         debugPrint(
-          'Guardando solicitud local y operación offline...',
+          'Guardando operación offline...',
         );
-
         debugPrint(
           'Error: $e',
         );
-
-        // --------------------------------------------------
-        // 1. Guardamos inmediatamente la solicitud en
-        //    ServiceRequests para que aparezca en pantalla.
-        // --------------------------------------------------
-
-        await _guardarSolicitudLocal(
-          id: 'local-$clientOperationId',
-          clientOperationId:
-              clientOperationId,
-          descripcion:
-              descripcion,
-          status:
-              'pendiente',
-          createdAt:
-              ahora,
-        );
-
-        debugPrint(
-          'SOLICITUD OFFLINE GUARDADA EN SQLITE',
-        );
-
-        // --------------------------------------------------
-        // 2. Guardamos la operación en SyncQueue.
-        // --------------------------------------------------
 
         await _guardarOperacionOffline(
           idUsuario: idUsuario,
           clientOperationId:
               clientOperationId,
-          descripcion:
-              descripcion,
-          createdAt:
-              ahora,
-        );
-
-        debugPrint(
-          'OPERACIÓN OFFLINE GUARDADA EN SYNC_QUEUE',
+          descripcion: descripcion,
         );
 
         if (!mounted) return;
 
         _mostrarMensaje(
           'Sin conexión. La solicitud quedó '
-          'guardada localmente y será sincronizada '
-          'cuando vuelva la conexión.',
+          'guardada y será sincronizada '
+          'posteriormente.',
         );
 
         _descripcionController.clear();
@@ -227,10 +302,6 @@ class _CrearSolicitudScreenState
 
         if (!mounted) return;
 
-        // Regresamos a la lista.
-        //
-        // La pantalla anterior recibirá true y
-        // volverá a cargar SQLite.
         Navigator.of(context).pop(true);
       }
     } catch (e) {
@@ -255,6 +326,10 @@ class _CrearSolicitudScreenState
       }
     }
   }
+
+  // ============================================================
+  // GUARDAR SOLICITUD LOCAL
+  // ============================================================
 
   Future<void> _guardarSolicitudLocal({
     required String id,
@@ -291,16 +366,22 @@ class _CrearSolicitudScreenState
     );
 
     debugPrint(
-      'SOLICITUD GUARDADA EN SQLITE: $id',
+      'SOLICITUD GUARDADA EN SQLITE',
     );
   }
+
+  // ============================================================
+  // GUARDAR OPERACIÓN OFFLINE
+  // ============================================================
 
   Future<void> _guardarOperacionOffline({
     required int idUsuario,
     required String clientOperationId,
     required String descripcion,
-    required DateTime createdAt,
   }) async {
+    final ahora =
+        DateTime.now();
+
     final payload = jsonEncode({
       'idUsuario': idUsuario,
       'idCategoria':
@@ -311,8 +392,23 @@ class _CrearSolicitudScreenState
           descripcion,
       'estado':
           'publicada',
-      'latitud': 0,
-      'longitud': 0,
+
+      // Ubicación obtenida del dispositivo.
+      'latitud':
+          _latitud,
+      'longitud':
+          _longitud,
+
+      // Precisión disponible en el dispositivo.
+      'precision':
+          _precision,
+
+      // La fotografía se mantiene como evidencia
+      // local de la sesión. No se sube al backend
+      // porque el endpoint actual no implementa
+      // carga de archivos.
+      'fotoTomada':
+          _foto != null,
     });
 
     await _database.syncQueueDao
@@ -329,9 +425,9 @@ class _CrearSolicitudScreenState
         retryCount:
             const drift.Value(0),
         createdAt:
-            createdAt,
+            ahora,
         nextRetryAt:
-            drift.Value(createdAt),
+            drift.Value(ahora),
         status:
             'pending',
       ),
@@ -346,6 +442,10 @@ class _CrearSolicitudScreenState
       '$clientOperationId',
     );
   }
+
+  // ============================================================
+  // MENSAJES
+  // ============================================================
 
   void _mostrarMensaje(
     String mensaje, {
@@ -367,13 +467,94 @@ class _CrearSolicitudScreenState
     );
   }
 
+  // ============================================================
+  // DIÁLOGO AJUSTES
+  // ============================================================
+
+  Future<void> _mostrarDialogoAjustes({
+    required String titulo,
+    required String mensaje,
+  }) async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title:
+              Text(titulo),
+          content:
+              Text(mensaje),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child:
+                  const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                Navigator.of(context).pop();
+
+                await NativeCapabilitiesService
+                    .openAppSettingsPage();
+              },
+              child:
+                  const Text('Abrir ajustes'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _mostrarDialogoGPSDesactivado() async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title:
+              const Text('GPS desactivado'),
+          content:
+              const Text(
+            'El permiso de ubicación fue concedido, '
+            'pero el GPS del teléfono está desactivado.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child:
+                  const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                Navigator.of(context).pop();
+
+                await NativeCapabilitiesService
+                    .openLocationSettings();
+              },
+              child:
+                  const Text('Abrir ubicación'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // ============================================================
+  // BUILD
+  // ============================================================
+
   @override
   Widget build(
     BuildContext context,
   ) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
+        title:
+            const Text(
           'Nueva Solicitud',
         ),
       ),
@@ -404,9 +585,10 @@ class _CrearSolicitudScreenState
 
               const Text(
                 'Describe el servicio que necesitas. '
-                'Si no hay conexión, la solicitud '
-                'se guardará localmente y se '
-                'sincronizará posteriormente.',
+                'La ubicación permite registrar el lugar '
+                'donde se requiere el servicio. '
+                'Si no hay conexión, la solicitud se '
+                'guardará localmente.',
               ),
 
               const SizedBox(
@@ -456,7 +638,7 @@ class _CrearSolicitudScreenState
                       width: 12,
                     ),
                     Text(
-                      'Plomería',
+                      'Plomeria',
                       style:
                           TextStyle(
                         fontSize:
@@ -509,13 +691,392 @@ class _CrearSolicitudScreenState
               ),
 
               const SizedBox(
+                height: 20,
+              ),
+
+              // ==================================================
+              // UBICACIÓN
+              // ==================================================
+
+              Container(
+                width:
+                    double.infinity,
+                padding:
+                    const EdgeInsets.all(
+                  16,
+                ),
+                decoration:
+                    BoxDecoration(
+                  color:
+                      Colors.blue.shade50,
+                  borderRadius:
+                      BorderRadius.circular(
+                    14,
+                  ),
+                  border:
+                      Border.all(
+                    color:
+                        Colors.blue.shade200,
+                  ),
+                ),
+                child:
+                    Column(
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
+                  children: [
+                    const Row(
+                      children: [
+                        Icon(
+                          Icons.location_on,
+                        ),
+                        SizedBox(
+                          width: 10,
+                        ),
+                        Expanded(
+                          child: Text(
+                            'Ubicación del servicio',
+                            style:
+                                TextStyle(
+                              fontWeight:
+                                  FontWeight.bold,
+                              fontSize:
+                                  16,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(
+                      height: 8,
+                    ),
+
+                    const Text(
+                      'La ubicación se solicita únicamente '
+                      'cuando presionas el botón.',
+                    ),
+
+                    const SizedBox(
+                      height: 12,
+                    ),
+
+                    if (_latitud != null &&
+                        _longitud != null)
+                      Container(
+                        width:
+                            double.infinity,
+                        padding:
+                            const EdgeInsets.all(
+                          12,
+                        ),
+                        decoration:
+                            BoxDecoration(
+                          color:
+                              Colors.white,
+                          borderRadius:
+                              BorderRadius.circular(
+                            10,
+                          ),
+                        ),
+                        child:
+                            Column(
+                          crossAxisAlignment:
+                              CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Latitud: '
+                              '${_latitud!.toStringAsFixed(6)}',
+                            ),
+                            const SizedBox(
+                              height: 4,
+                            ),
+                            Text(
+                              'Longitud: '
+                              '${_longitud!.toStringAsFixed(6)}',
+                            ),
+                            if (_precision !=
+                                null)
+                              Padding(
+                                padding:
+                                    const EdgeInsets.only(
+                                  top: 4,
+                                ),
+                                child:
+                                    Text(
+                                  'Precisión: '
+                                  '${_precision!.toStringAsFixed(1)} m',
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+
+                    if (_mensajeUbicacion !=
+                        null)
+                      Padding(
+                        padding:
+                            const EdgeInsets.only(
+                          top: 10,
+                        ),
+                        child:
+                            Text(
+                          _mensajeUbicacion!,
+                          style:
+                              const TextStyle(
+                            color:
+                                Colors.orange,
+                          ),
+                        ),
+                      ),
+
+                    if (_estadoUbicacion ==
+                        NativePermissionState.permanentlyDenied)
+                      Padding(
+                        padding:
+                            const EdgeInsets.only(
+                          top: 10,
+                        ),
+                        child:
+                            OutlinedButton.icon(
+                          onPressed: () =>
+                              NativeCapabilitiesService
+                                  .openAppSettingsPage(),
+                          icon: const Icon(
+                            Icons.settings,
+                            size: 18,
+                          ),
+                          label: const Text(
+                            'Abrir ajustes de la app',
+                          ),
+                        ),
+                      ),
+
+                    const SizedBox(
+                      height: 12,
+                    ),
+
+                    SizedBox(
+                      width:
+                          double.infinity,
+                      child:
+                          FilledButton.icon(
+                        onPressed:
+                            _obteniendoUbicacion
+                                ? null
+                                : _obtenerUbicacion,
+                        icon:
+                            _obteniendoUbicacion
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child:
+                                        CircularProgressIndicator(
+                                      strokeWidth:
+                                          2,
+                                    ),
+                                  )
+                                : const Icon(
+                                    Icons.my_location,
+                                  ),
+                        label:
+                            Text(
+                          _obteniendoUbicacion
+                              ? 'Obteniendo ubicación...'
+                              : _latitud == null
+                                  ? 'Obtener ubicación'
+                                  : 'Actualizar ubicación',
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(
+                height: 16,
+              ),
+
+              // ==================================================
+              // CÁMARA
+              // ==================================================
+
+              Container(
+                width:
+                    double.infinity,
+                padding:
+                    const EdgeInsets.all(
+                  16,
+                ),
+                decoration:
+                    BoxDecoration(
+                  color:
+                      Colors.green.shade50,
+                  borderRadius:
+                      BorderRadius.circular(
+                    14,
+                  ),
+                  border:
+                      Border.all(
+                    color:
+                        Colors.green.shade200,
+                  ),
+                ),
+                child:
+                    Column(
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
+                  children: [
+                    const Row(
+                      children: [
+                        Icon(
+                          Icons.camera_alt,
+                        ),
+                        SizedBox(
+                          width: 10,
+                        ),
+                        Expanded(
+                          child: Text(
+                            'Evidencia fotográfica',
+                            style:
+                                TextStyle(
+                              fontWeight:
+                                  FontWeight.bold,
+                              fontSize:
+                                  16,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(
+                      height: 8,
+                    ),
+
+                    const Text(
+                      'Puedes tomar una fotografía del '
+                      'servicio solicitado.',
+                    ),
+
+                    if (_foto != null) ...[
+                      const SizedBox(
+                        height: 12,
+                      ),
+
+                      ClipRRect(
+                        borderRadius:
+                            BorderRadius.circular(
+                          10,
+                        ),
+                        child:
+                            Image.file(
+                          File(
+                            _foto!.path,
+                          ),
+                          height:
+                              180,
+                          width:
+                              double.infinity,
+                          fit:
+                              BoxFit.cover,
+                        ),
+                      ),
+                    ],
+
+                    if (_mensajeCamara !=
+                        null)
+                      Padding(
+                        padding:
+                            const EdgeInsets.only(
+                          top: 10,
+                        ),
+                        child:
+                            Text(
+                          _mensajeCamara!,
+                          style:
+                              const TextStyle(
+                            color:
+                                Colors.orange,
+                          ),
+                        ),
+                      ),
+
+                    if (_estadoCamara ==
+                        NativePermissionState.permanentlyDenied)
+                      Padding(
+                        padding:
+                            const EdgeInsets.only(
+                          top: 10,
+                        ),
+                        child:
+                            OutlinedButton.icon(
+                          onPressed: () =>
+                              NativeCapabilitiesService
+                                  .openAppSettingsPage(),
+                          icon: const Icon(
+                            Icons.settings,
+                            size: 18,
+                          ),
+                          label: const Text(
+                            'Abrir ajustes de la app',
+                          ),
+                        ),
+                      ),
+
+                    const SizedBox(
+                      height: 12,
+                    ),
+
+                    SizedBox(
+                      width:
+                          double.infinity,
+                      child:
+                          OutlinedButton.icon(
+                        onPressed:
+                            _tomandoFoto
+                                ? null
+                                : _tomarFotografia,
+                        icon:
+                            _tomandoFoto
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child:
+                                        CircularProgressIndicator(
+                                      strokeWidth:
+                                          2,
+                                    ),
+                                  )
+                                : const Icon(
+                                    Icons.camera_alt,
+                                  ),
+                        label:
+                            Text(
+                          _tomandoFoto
+                              ? 'Abriendo cámara...'
+                              : _foto == null
+                                  ? 'Tomar fotografía'
+                                  : 'Tomar otra fotografía',
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(
                 height: 24,
               ),
+
+              // ==================================================
+              // CREAR
+              // ==================================================
 
               SizedBox(
                 width:
                     double.infinity,
-                height: 52,
+                height:
+                    52,
                 child:
                     ElevatedButton.icon(
                   onPressed:
@@ -580,7 +1141,9 @@ class _CrearSolicitudScreenState
                       child: Text(
                         'La solicitud utiliza un '
                         'identificador único para evitar '
-                        'duplicados durante la sincronización.',
+                        'duplicados durante la sincronización. '
+                        'La ubicación se conserva también '
+                        'dentro de la operación offline.',
                       ),
                     ),
                   ],

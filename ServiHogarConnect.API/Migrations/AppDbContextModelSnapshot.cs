@@ -178,6 +178,37 @@ namespace ServiHogarConnect.API.Migrations
                     b.ToTable("Profesionales");
                 });
 
+            modelBuilder.Entity("ServiHogarConnect.API.Models.RefreshToken", b =>
+                {
+                    b.Property<int>("IdRefreshToken")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("IdRefreshToken"));
+
+                    b.Property<DateTime>("FechaExpiracion")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("IdUsuario")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("Revocado")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Token")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("IdRefreshToken");
+
+                    b.HasIndex("IdUsuario");
+
+                    b.HasIndex("Token")
+                        .IsUnique();
+
+                    b.ToTable("RefreshTokens");
+                });
+
             modelBuilder.Entity("ServiHogarConnect.API.Models.SolicitudServicio", b =>
                 {
                     b.Property<int>("IdSolicitud")
@@ -342,6 +373,17 @@ namespace ServiHogarConnect.API.Migrations
                     b.HasOne("ServiHogarConnect.API.Models.Usuario", "Usuario")
                         .WithOne("Profesional")
                         .HasForeignKey("ServiHogarConnect.API.Models.Profesional", "IdUsuario")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Usuario");
+                });
+
+            modelBuilder.Entity("ServiHogarConnect.API.Models.RefreshToken", b =>
+                {
+                    b.HasOne("ServiHogarConnect.API.Models.Usuario", "Usuario")
+                        .WithMany()
+                        .HasForeignKey("IdUsuario")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 

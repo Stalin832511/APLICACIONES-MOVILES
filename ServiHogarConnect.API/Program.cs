@@ -49,6 +49,8 @@ builder.Services.AddAuthentication(
         options.TokenValidationParameters =
             new TokenValidationParameters
             {
+                // Verifica que el JWT haya sido firmado
+                // con nuestra clave secreta.
                 ValidateIssuerSigningKey = true,
 
                 IssuerSigningKey =
@@ -56,11 +58,26 @@ builder.Services.AddAuthentication(
                         Encoding.UTF8.GetBytes(
                             "ServiHogarConnect-Clave-Segura-2026-123456")),
 
+                // Actualmente no usamos Issuer.
                 ValidateIssuer = false,
 
+                // Actualmente no usamos Audience.
                 ValidateAudience = false,
 
-                ValidateLifetime = false
+                // IMPORTANTE:
+                // El servidor validará estrictamente
+                // la fecha de expiración del JWT.
+                ValidateLifetime = true,
+
+                // IMPORTANTE PARA LA PRUEBA DE REFRESH TOKEN:
+                // No permitir margen adicional después
+                // de la fecha de expiración.
+                //
+                // Sin esta configuración, ASP.NET Core
+                // utiliza por defecto un margen de tolerancia
+                // que puede hacer que un token aparentemente
+                // expirado siga siendo aceptado.
+                ClockSkew = TimeSpan.Zero
             };
     });
 

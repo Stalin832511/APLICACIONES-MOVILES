@@ -12,6 +12,8 @@ public AppDbContext(DbContextOptions<AppDbContext> options)
 
 public DbSet<Usuario> Usuarios => Set<Usuario>();
 
+public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+
 public DbSet<Profesional> Profesionales => Set<Profesional>();
 
 public DbSet<CategoriaServicio> CategoriasServicio => Set<CategoriaServicio>();
@@ -59,7 +61,33 @@ protected override void OnModelCreating(ModelBuilder modelBuilder)
             .HasMaxLength(20)
             .IsRequired();
     });
+// ================================
+// REFRESH TOKEN
+// ================================
 
+modelBuilder.Entity<RefreshToken>(entity =>
+{
+    entity.HasKey(r => r.IdRefreshToken);
+
+    entity.Property(r => r.Token)
+        .IsRequired();
+
+    entity.HasIndex(r => r.Token)
+        .IsUnique();
+
+    entity.Property(r => r.FechaExpiracion)
+        .IsRequired();
+
+    entity.Property(r => r.Revocado)
+        .IsRequired();
+
+    entity.HasOne(r => r.Usuario)
+        .WithMany()
+        .HasForeignKey(r => r.IdUsuario)
+        .OnDelete(DeleteBehavior.Cascade);
+
+    entity.HasIndex(r => r.IdUsuario);
+});
     // ================================
     // PROFESIONAL
     // ================================

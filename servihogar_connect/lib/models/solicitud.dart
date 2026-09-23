@@ -9,6 +9,9 @@ class SolicitudModel {
   final DateTime fechaCreacion;
   final String? categoriaNombre;
   final String? usuarioNombre;
+  final double? latitud;
+  final double? longitud;
+  final String? clientOperationId;
 
   SolicitudModel({
     required this.id,
@@ -17,6 +20,9 @@ class SolicitudModel {
     required this.fechaCreacion,
     this.categoriaNombre,
     this.usuarioNombre,
+    this.latitud,
+    this.longitud,
+    this.clientOperationId,
   });
 
   factory SolicitudModel.fromJson(Map<String, dynamic> json) {
@@ -32,9 +38,17 @@ class SolicitudModel {
                 .toString(),
           ) ??
           DateTime.now(),
-      categoriaNombre: json['categoria']?['nombre'] ??
-          json['Categoria']?['Nombre'],
+      categoriaNombre:
+          json['categoria']?['nombre'] ?? json['Categoria']?['Nombre'],
       usuarioNombre: json['usuario']?['nombre'] ?? json['Usuario']?['Nombre'],
+      latitud: (json['latitud'] ?? json['Latitud']) != null
+          ? double.tryParse((json['latitud'] ?? json['Latitud']).toString())
+          : null,
+      longitud: (json['longitud'] ?? json['Longitud']) != null
+          ? double.tryParse((json['longitud'] ?? json['Longitud']).toString())
+          : null,
+      clientOperationId:
+          json['clientOperationId'] ?? json['ClientOperationId'],
     );
   }
 }
