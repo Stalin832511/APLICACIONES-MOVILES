@@ -20,6 +20,8 @@ public DbSet<CategoriaServicio> CategoriasServicio => Set<CategoriaServicio>();
 
 public DbSet<SolicitudServicio> SolicitudesServicio => Set<SolicitudServicio>();
 
+public DbSet<EvidenciaServicio> EvidenciasServicio => Set<EvidenciaServicio>();
+
 public DbSet<Cotizacion> Cotizaciones => Set<Cotizacion>();
 
 public DbSet<Calificacion> Calificaciones => Set<Calificacion>();
@@ -127,6 +129,10 @@ modelBuilder.Entity<RefreshToken>(entity =>
             .HasMaxLength(100)
             .IsRequired();
 
+        entity.Property(c => c.Activa)
+            .HasDefaultValue(true)
+            .IsRequired();
+
         entity.HasIndex(c => c.Nombre)
             .IsUnique();
     });
@@ -174,6 +180,36 @@ modelBuilder.Entity<RefreshToken>(entity =>
         entity.HasIndex(s => s.Estado);
 
         entity.HasIndex(s => s.FechaCreacion);
+    });
+
+    modelBuilder.Entity<EvidenciaServicio>(entity =>
+    {
+        entity.HasKey(e => e.IdEvidencia);
+
+        entity.Property(e => e.StorageKey)
+            .HasMaxLength(300)
+            .IsRequired();
+
+        entity.Property(e => e.NombreArchivo)
+            .HasMaxLength(255)
+            .IsRequired();
+
+        entity.Property(e => e.TipoContenido)
+            .HasMaxLength(50)
+            .IsRequired();
+
+        entity.Property(e => e.TamanoBytes)
+            .IsRequired();
+
+        entity.Property(e => e.FechaCreacion)
+            .IsRequired();
+
+        entity.HasOne(e => e.Solicitud)
+            .WithMany(s => s.Evidencias)
+            .HasForeignKey(e => e.IdSolicitud)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        entity.HasIndex(e => e.IdSolicitud);
     });
 
     // ================================
@@ -247,8 +283,15 @@ modelBuilder.Entity<RefreshToken>(entity =>
             .HasForeignKey(m => m.IdReceptor)
             .OnDelete(DeleteBehavior.Restrict);
 
+        entity.HasOne(m => m.Solicitud)
+            .WithMany(s => s.MensajesChat)
+            .HasForeignKey(m => m.IdSolicitud)
+            .OnDelete(DeleteBehavior.Cascade);
+
         entity.Property(m => m.Mensaje)
             .IsRequired();
+
+        entity.HasIndex(m => m.IdSolicitud);
 
         entity.HasIndex(m => new
         {

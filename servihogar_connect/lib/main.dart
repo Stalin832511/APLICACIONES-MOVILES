@@ -5,8 +5,10 @@ import 'package:flutter/material.dart';
 
 import 'config/app_config.dart';
 import 'database/app_database.dart';
-import 'screens/home_screen.dart';
+import 'screens/admin_dashboard.dart';
 import 'screens/login_screen.dart';
+import 'screens/main_navigation_screen.dart';
+import 'screens/professional_dashboard.dart';
 import 'services/auth_service.dart';
 import 'services/sync_service.dart';
 import 'theme/app_theme.dart';
@@ -234,11 +236,11 @@ class _SessionCheckScreenState
     if (!mounted) return;
 
     if (sesionActiva) {
+      final role = await AuthService.getUserRole();
+      if (!mounted) return;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
-          builder: (_) => HomeScreen(
-            database: widget.database,
-          ),
+          builder: (_) => _screenForRole(role),
         ),
       );
     } else {
@@ -250,6 +252,18 @@ class _SessionCheckScreenState
         ),
       );
     }
+  }
+
+  Widget _screenForRole(String? role) {
+    final normalized = role?.trim().toLowerCase() ?? '';
+    if (normalized.contains('admin')) {
+      return AdminDashboard(database: widget.database);
+    }
+    if (normalized.contains('profesional') ||
+        normalized.contains('professional')) {
+      return ProfessionalDashboard(database: widget.database);
+    }
+    return MainNavigationScreen(database: widget.database);
   }
 
   @override

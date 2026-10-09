@@ -35,4 +35,10 @@ public CategoriaServicio? Categoria { get; set; }
 public ICollection<Cotizacion> Cotizaciones { get; set; } =
     new List<Cotizacion>();
 
+public ICollection<EvidenciaServicio> Evidencias { get; set; } =
+    new List<EvidenciaServicio>();
+
+public ICollection<MensajeChat> MensajesChat { get; set; } =
+    new List<MensajeChat>();
+
 }

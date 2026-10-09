@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 
 import 'api_client.dart';
 
@@ -11,30 +12,28 @@ class JwtRefreshTestService {
   JwtRefreshTestService._();
 
   static Future<void> ejecutarPrueba() async {
-    print('========================================');
-    print('INICIO PRUEBA JWT REFRESH');
-    print('========================================');
+    if (kDebugMode) {
+      debugPrint('INICIO PRUEBA JWT REFRESH');
+    }
 
     try {
-      print('ENVIANDO PETICION A /api/v1/health');
+      if (kDebugMode) {
+        debugPrint('Enviando petición a /api/v1/health');
+      }
 
       final response = await ApiClient.instance.get(
         '/api/v1/health',
       );
 
-      print('RESPUESTA API CLIENT');
-      print('STATUS: ${response.statusCode}');
-      print('DATA: ${response.data}');
-
-      print('========================================');
-      print('PRUEBA JWT FINALIZADA');
-      print('========================================');
-    } on DioException catch (e) {
-      print('========================================');
-      print('ERROR PRUEBA JWT');
-      print('STATUS: ${e.response?.statusCode}');
-      print('ERROR: ${e.error}');
-      print('========================================');
+      if (kDebugMode) {
+        debugPrint('Prueba JWT finalizada. HTTP ${response.statusCode}.');
+      }
+    } on DioException catch (error) {
+      if (kDebugMode) {
+        debugPrint(
+          'Prueba JWT fallida. HTTP ${error.response?.statusCode ?? 'sin respuesta'}.',
+        );
+      }
 
       rethrow;
     }

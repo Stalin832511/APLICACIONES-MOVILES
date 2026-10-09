@@ -1,10 +1,12 @@
 import 'dart:convert';
 
 import 'package:drift/drift.dart' as drift;
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
 import '../database/app_database.dart';
 import 'api_service.dart';
+import 'evidence_service.dart';
 
 class SyncService {
   final AppDatabase database;
@@ -126,6 +128,20 @@ class SyncService {
         '$stackTrace',
       );
 
+      if ((e is DioException &&
+              (e.response?.statusCode == 400 ||
+                  e.response?.statusCode == 422)) ||
+          (e is ApiServiceException &&
+              (e.statusCode == 400 || e.statusCode == 422))) {
+        await database.syncQueueDao.updateRetry(
+          operacion.id,
+          retryCount: operacion.retryCount + 1,
+          status: 'failed',
+          nextRetryAt: null,
+        );
+        return;
+      }
+
       await _registrarReintento(
         operacion,
       );
@@ -168,6 +184,14 @@ class SyncService {
           (payload['longitud'] as num)
               .toDouble(),
     );
+
+    final fotoPath = payload['fotoPath'] as String?;
+    if (fotoPath != null && fotoPath.isNotEmpty) {
+      await EvidenceService.upload(
+        idSolicitud: solicitud.id,
+        filePath: fotoPath,
+      );
+    }
 
     debugPrint(
       'SOLICITUD SINCRONIZADA CORRECTAMENTE',

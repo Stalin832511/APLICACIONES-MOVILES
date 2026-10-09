@@ -31,6 +31,17 @@ class SyncQueueDao extends DatabaseAccessor<AppDatabase>
         .get();
   }
 
+  Future<List<SyncQueueData>> getAllOperations() {
+    return (select(syncQueue)
+          ..orderBy([
+            (table) => OrderingTerm(
+                  expression: table.createdAt,
+                  mode: OrderingMode.desc,
+                ),
+          ]))
+        .get();
+  }
+
   /// Guarda una nueva operación en la cola local.
   Future<void> insertOperation(
     SyncQueueCompanion operation,

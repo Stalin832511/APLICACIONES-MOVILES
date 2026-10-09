@@ -4,6 +4,8 @@ public class MensajeChat
 {
     public int IdMensaje { get; set; }
 
+    public int? IdSolicitud { get; set; }
+
     public int IdEmisor { get; set; }
 
     public int IdReceptor { get; set; }
@@ -15,4 +17,6 @@ public class MensajeChat
     public Usuario Emisor { get; set; } = null!;
 
     public Usuario Receptor { get; set; } = null!;
+
+    public SolicitudServicio? Solicitud { get; set; }
 }

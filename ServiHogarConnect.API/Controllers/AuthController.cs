@@ -1,12 +1,14 @@
+using System.ComponentModel.DataAnnotations;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using ServiHogarConnect.API.Data;
 using ServiHogarConnect.API.Models;
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
-using System.Security.Cryptography;
-using System.Text;
 
 namespace ServiHogarConnect.API.Controllers;
 
@@ -15,113 +17,137 @@ namespace ServiHogarConnect.API.Controllers;
 public class AuthController : ControllerBase
 {
     private readonly AppDbContext _context;
+    private readonly IPasswordHasher<Usuario> _passwordHasher;
+    private readonly byte[] _jwtSigningKey;
 
-    private const string JwtSecret =
-        "ServiHogarConnect-Clave-Segura-2026-123456";
-
-    public AuthController(AppDbContext context)
+    public AuthController(
+        AppDbContext context,
+        IPasswordHasher<Usuario> passwordHasher,
+        IConfiguration configuration)
     {
         _context = context;
+        _passwordHasher = passwordHasher;
+        _jwtSigningKey = Encoding.UTF8.GetBytes(
+            configuration["Jwt:SigningKey"]!);
+    }
+
+    [HttpPost("register")]
+    public async Task<IActionResult> Register(
+        [FromBody] RegisterRequest request)
+    {
+        var email = request.Email.Trim().ToLowerInvariant();
+        if (await _context.Usuarios.AnyAsync(
+                u => u.Email.ToLower() == email))
+        {
+            return Conflict(new { mensaje = "El correo ya está registrado" });
+        }
+
+        var usuario = new Usuario
+        {
+            Nombre = request.Nombre.Trim(),
+            Apellido = request.Apellido.Trim(),
+            Email = email,
+            Telefono = string.IsNullOrWhiteSpace(request.Telefono)
+                ? null
+                : request.Telefono.Trim(),
+            TipoUsuario = "cliente"
+        };
+        usuario.PasswordHash = _passwordHasher.HashPassword(
+            usuario,
+            request.Password);
+
+        _context.Usuarios.Add(usuario);
+        try
+        {
+            await _context.SaveChangesAsync();
+        }
+        catch (DbUpdateException)
+        {
+            if (await _context.Usuarios.AnyAsync(
+                    u => u.Email.ToLower() == email))
+            {
+                return Conflict(new { mensaje = "El correo ya está registrado" });
+            }
+
+            throw;
+        }
+
+        var accessToken = CrearAccessToken(usuario);
+        var refreshToken = GenerarRefreshToken();
+        _context.RefreshTokens.Add(new RefreshToken
+        {
+            Token = refreshToken,
+            FechaExpiracion = DateTime.UtcNow.AddDays(7),
+            Revocado = false,
+            IdUsuario = usuario.IdUsuario
+        });
+        await _context.SaveChangesAsync();
+
+        return StatusCode(
+            StatusCodes.Status201Created,
+            new
+            {
+                mensaje = "Cuenta creada correctamente",
+                token = accessToken,
+                tipo = "Bearer",
+                usuario = usuario.Email,
+                idUsuario = usuario.IdUsuario,
+                rol = ObtenerRol(usuario.TipoUsuario),
+                refreshToken
+            });
     }
 
     [HttpPost("login")]
     public async Task<IActionResult> Login(
         [FromBody] LoginRequest request)
     {
-        // Usuario de prueba para demostrar autenticación JWT.
-        if (request.Email != "admin@servihogar.com" ||
-            request.Password != "123456")
-        {
-            return Unauthorized(new
-            {
-                mensaje = "Credenciales incorrectas"
-            });
-        }
-
-        // Buscamos el usuario real en PostgreSQL
-        // para obtener su IdUsuario.
+        var email = request.Email.Trim().ToLowerInvariant();
         var usuario = await _context.Usuarios
-            .FirstOrDefaultAsync(u => u.Email == request.Email);
+            .FirstOrDefaultAsync(u => u.Email.ToLower() == email);
 
         if (usuario == null)
         {
-            return Unauthorized(new
-            {
-                mensaje = "El usuario no existe en la base de datos"
-            });
+            return Unauthorized(new { mensaje = "Credenciales incorrectas" });
         }
 
-        var claims = new[]
+        var verificationResult = _passwordHasher.VerifyHashedPassword(
+            usuario,
+            usuario.PasswordHash,
+            request.Password);
+        if (verificationResult == PasswordVerificationResult.Failed)
         {
-            new Claim(
-                ClaimTypes.Name,
-                request.Email),
+            return Unauthorized(new { mensaje = "Credenciales incorrectas" });
+        }
 
-            new Claim(
-                ClaimTypes.NameIdentifier,
-                usuario.IdUsuario.ToString()),
+        if (verificationResult == PasswordVerificationResult.SuccessRehashNeeded)
+        {
+            usuario.PasswordHash = _passwordHasher.HashPassword(
+                usuario,
+                request.Password);
+        }
 
-            new Claim(
-                ClaimTypes.Role,
-                "Administrador")
-        };
-
-        // =====================================================
-        // ACCESS TOKEN
-        // =====================================================
-
-        var clave = new SymmetricSecurityKey(
-            Encoding.UTF8.GetBytes(JwtSecret));
-
-        var credenciales = new SigningCredentials(
-            clave,
-            SecurityAlgorithms.HmacSha256);
-
-        var token = new JwtSecurityToken(
-            claims: claims,
-            expires: DateTime.UtcNow.AddHours(1),
-            signingCredentials: credenciales);
-
-        var tokenGenerado =
-            new JwtSecurityTokenHandler()
-                .WriteToken(token);
-
-        // =====================================================
-        // REFRESH TOKEN
-        // =====================================================
-
+        var accessToken = CrearAccessToken(usuario);
         var refreshToken = GenerarRefreshToken();
-
-        var refreshTokenEntity = new RefreshToken
+        _context.RefreshTokens.Add(new RefreshToken
         {
             Token = refreshToken,
             FechaExpiracion = DateTime.UtcNow.AddDays(7),
             Revocado = false,
             IdUsuario = usuario.IdUsuario
-        };
-
-        _context.RefreshTokens.Add(refreshTokenEntity);
-
+        });
         await _context.SaveChangesAsync();
-
-        // =====================================================
-        // RESPUESTA
-        // =====================================================
 
         return Ok(new
         {
             mensaje = "Autenticación exitosa",
-            token = tokenGenerado,
+            token = accessToken,
             tipo = "Bearer",
-            usuario = request.Email,
+            usuario = usuario.Email,
             idUsuario = usuario.IdUsuario,
-            refreshToken = refreshToken
+            rol = ObtenerRol(usuario.TipoUsuario),
+            refreshToken
         });
     }
-
-    // =========================================================
-    // REFRESH TOKEN
-    // =========================================================
 
     [HttpPost("refresh")]
     public async Task<IActionResult> Refresh(
@@ -129,16 +155,12 @@ public class AuthController : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(request.RefreshToken))
         {
-            return Unauthorized(new
-            {
-                mensaje = "Refresh token requerido"
-            });
+            return Unauthorized(new { mensaje = "Refresh token requerido" });
         }
 
         var refreshToken = await _context.RefreshTokens
             .Include(r => r.Usuario)
-            .FirstOrDefaultAsync(
-                r => r.Token == request.RefreshToken);
+            .FirstOrDefaultAsync(r => r.Token == request.RefreshToken);
 
         if (refreshToken == null ||
             refreshToken.Revocado ||
@@ -150,98 +172,96 @@ public class AuthController : ControllerBase
             });
         }
 
-        // =====================================================
-        // NUEVO ACCESS TOKEN
-        // =====================================================
-
-        var claims = new[]
-        {
-            new Claim(
-                ClaimTypes.Name,
-                refreshToken.Usuario.Email),
-
-            new Claim(
-                ClaimTypes.NameIdentifier,
-                refreshToken.Usuario.IdUsuario.ToString()),
-
-            new Claim(
-                ClaimTypes.Role,
-                "Administrador")
-        };
-
-        var clave = new SymmetricSecurityKey(
-            Encoding.UTF8.GetBytes(JwtSecret));
-
-        var credenciales = new SigningCredentials(
-            clave,
-            SecurityAlgorithms.HmacSha256);
-
-        var token = new JwtSecurityToken(
-            claims: claims,
-            expires: DateTime.UtcNow.AddSeconds(15),
-            signingCredentials: credenciales);
-
-        var nuevoAccessToken =
-            new JwtSecurityTokenHandler()
-                .WriteToken(token);
-
-        // =====================================================
-        // ROTACIÓN DEL REFRESH TOKEN
-        // =====================================================
-
         refreshToken.Revocado = true;
-
         var nuevoRefreshToken = GenerarRefreshToken();
-
-        var nuevoRefreshTokenEntity = new RefreshToken
+        _context.RefreshTokens.Add(new RefreshToken
         {
             Token = nuevoRefreshToken,
             FechaExpiracion = DateTime.UtcNow.AddDays(7),
             Revocado = false,
             IdUsuario = refreshToken.Usuario.IdUsuario
-        };
-
-        _context.RefreshTokens.Add(
-            nuevoRefreshTokenEntity);
+        });
 
         await _context.SaveChangesAsync();
 
         return Ok(new
         {
-            token = nuevoAccessToken,
+            token = CrearAccessToken(refreshToken.Usuario),
             tipo = "Bearer",
             refreshToken = nuevoRefreshToken
         });
     }
 
-    // =========================================================
-    // GENERAR REFRESH TOKEN
-    // =========================================================
-
-    private static string GenerarRefreshToken()
+    private string CrearAccessToken(Usuario usuario)
     {
-        var bytes = RandomNumberGenerator.GetBytes(64);
+        var claims = new[]
+        {
+            new Claim(ClaimTypes.Name, usuario.Email),
+            new Claim(
+                ClaimTypes.NameIdentifier,
+                usuario.IdUsuario.ToString()),
+            new Claim(ClaimTypes.Role, ObtenerRol(usuario.TipoUsuario))
+        };
+        var credentials = new SigningCredentials(
+            new SymmetricSecurityKey(_jwtSigningKey),
+            SecurityAlgorithms.HmacSha256);
+        var token = new JwtSecurityToken(
+            claims: claims,
+            expires: DateTime.UtcNow.AddHours(1),
+            signingCredentials: credentials);
 
-        return Convert.ToBase64String(bytes);
+        return new JwtSecurityTokenHandler().WriteToken(token);
     }
-}
 
-// =============================================================
-// LOGIN REQUEST
-// =============================================================
+    private static string ObtenerRol(string tipoUsuario) =>
+        tipoUsuario.Trim().ToLowerInvariant() switch
+        {
+            "admin" or "administrador" => "Administrador",
+            "profesional" => "Profesional",
+            _ => "Cliente"
+        };
+
+    private static string GenerarRefreshToken() =>
+        Convert.ToBase64String(RandomNumberGenerator.GetBytes(64));
+}
 
 public class LoginRequest
 {
+    [Required]
+    [EmailAddress]
+    [StringLength(150)]
     public string Email { get; set; } = string.Empty;
 
+    [Required]
+    [StringLength(128, MinimumLength = 1)]
     public string Password { get; set; } = string.Empty;
 }
 
-// =============================================================
-// REFRESH TOKEN REQUEST
-// =============================================================
+public class RegisterRequest
+{
+    [Required]
+    [StringLength(100, MinimumLength = 1)]
+    public string Nombre { get; set; } = string.Empty;
+
+    [Required]
+    [StringLength(100, MinimumLength = 1)]
+    public string Apellido { get; set; } = string.Empty;
+
+    [Required]
+    [EmailAddress]
+    [StringLength(150)]
+    public string Email { get; set; } = string.Empty;
+
+    [Required]
+    [StringLength(128, MinimumLength = 8)]
+    public string Password { get; set; } = string.Empty;
+
+    [StringLength(30)]
+    public string? Telefono { get; set; }
+}
 
 public class RefreshTokenRequest
 {
+    [Required]
     public string RefreshToken { get; set; } = string.Empty;
 }

@@ -1,22 +1,32 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:dio/dio.dart';
 import 'package:drift/drift.dart' as drift;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
 import '../database/app_database.dart';
+import '../models/categoria.dart';
+import '../models/solicitud.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
+import '../services/catalog_service.dart';
+import '../services/evidence_service.dart';
 import '../services/native/native_capabilities_service.dart';
 
 class CrearSolicitudScreen extends StatefulWidget {
   final AppDatabase database;
+  final int? initialCategoryId;
 
   const CrearSolicitudScreen({
     super.key,
     required this.database,
+    this.initialCategoryId,
   });
 
   @override
@@ -31,7 +41,11 @@ class _CrearSolicitudScreenState
   final TextEditingController _descripcionController =
       TextEditingController();
 
-  static const int _idCategoriaPlomeria = 1;
+  List<CategoriaModel> _categorias = [];
+  int? _idCategoriaSeleccionada;
+  bool _cargandoCategorias = true;
+  bool _categoriasDesdeCache = false;
+  String? _errorCategorias;
 
   bool _guardando = false;
   bool _obteniendoUbicacion = false;
@@ -57,6 +71,44 @@ class _CrearSolicitudScreenState
     super.initState();
 
     _database = widget.database;
+    _cargarCategorias();
+  }
+
+  Future<void> _cargarCategorias() async {
+    setState(() {
+      _cargandoCategorias = true;
+      _errorCategorias = null;
+    });
+
+    try {
+      final resultado = await CatalogService.loadCategories();
+      if (!mounted) return;
+
+      setState(() {
+        _categorias = resultado.categories;
+        _categoriasDesdeCache = resultado.fromCache;
+        final requestedCategoryExists = _categorias.any(
+          (categoria) => categoria.id == widget.initialCategoryId,
+        );
+        final selectedCategoryExists = _categorias.any(
+          (categoria) => categoria.id == _idCategoriaSeleccionada,
+        );
+        if (requestedCategoryExists) {
+          _idCategoriaSeleccionada = widget.initialCategoryId;
+        } else if (!selectedCategoryExists) {
+          _idCategoriaSeleccionada = _categorias.isEmpty
+              ? null
+              : _categorias.first.id;
+        }
+        _cargandoCategorias = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _errorCategorias = error.toString().replaceFirst('Exception: ', '');
+        _cargandoCategorias = false;
+      });
+    }
   }
 
   @override
@@ -132,11 +184,42 @@ class _CrearSolicitudScreenState
 
     if (!mounted) return;
 
+    XFile? fotoPersistida;
+    String? errorPersistencia;
+    if (result.image != null) {
+      try {
+        final directory = await getApplicationDocumentsDirectory();
+        final evidenceDirectory = Directory(
+          '${directory.path}${Platform.pathSeparator}evidence',
+        );
+        await evidenceDirectory.create(recursive: true);
+        final extension =
+            result.image!.path.toLowerCase().endsWith('.png')
+                ? '.png'
+                : '.jpg';
+        final persistentPath =
+            '${evidenceDirectory.path}${Platform.pathSeparator}'
+            'evidence_${const Uuid().v4()}$extension';
+        final storedFile = await File(result.image!.path).copy(persistentPath);
+        fotoPersistida = XFile(storedFile.path);
+      } on FileSystemException catch (error) {
+        debugPrint('No se pudo conservar la fotografía localmente: $error');
+        errorPersistencia =
+            'No se pudo conservar la fotografía en el dispositivo.';
+      } on MissingPlatformDirectoryException catch (error) {
+        debugPrint('No se pudo acceder al almacenamiento local: $error');
+        errorPersistencia =
+            'No se pudo acceder al almacenamiento local del dispositivo.';
+      }
+    }
+
+    if (!mounted) return;
+
     setState(() {
       _tomandoFoto = false;
       _estadoCamara = result.permissionState;
-      _foto = result.image;
-      _mensajeCamara = result.message;
+      _foto = fotoPersistida;
+      _mensajeCamara = errorPersistencia ?? result.message;
     });
 
     if (result.permissionState ==
@@ -161,6 +244,15 @@ class _CrearSolicitudScreenState
     if (descripcion.isEmpty) {
       _mostrarMensaje(
         'Escribe una descripción del servicio solicitado.',
+        esError: true,
+      );
+      return;
+    }
+
+    final idCategoria = _idCategoriaSeleccionada;
+    if (idCategoria == null) {
+      _mostrarMensaje(
+        'Selecciona una categoría activa antes de continuar.',
         esError: true,
       );
       return;
@@ -200,7 +292,7 @@ class _CrearSolicitudScreenState
       debugPrint('CREANDO SOLICITUD');
       debugPrint('Usuario: $idUsuario');
       debugPrint(
-        'Categoría: $_idCategoriaPlomeria',
+        'Categoría: $idCategoria',
       );
       debugPrint(
         'ClientOperationId: $clientOperationId',
@@ -218,92 +310,125 @@ class _CrearSolicitudScreenState
         '========================================',
       );
 
+      late final SolicitudModel solicitud;
       try {
-        final solicitud =
-            await ApiService.crearSolicitud(
+        solicitud = await ApiService.crearSolicitud(
           idUsuario: idUsuario,
-          idCategoria:
-              _idCategoriaPlomeria,
+          idCategoria: idCategoria,
           clientOperationId:
               clientOperationId,
           descripcion: descripcion,
           latitud: _latitud!,
           longitud: _longitud!,
         );
-
-        debugPrint(
-          'SOLICITUD CREADA ONLINE - '
-          'ID: ${solicitud.id}',
-        );
-
-        await _guardarSolicitudLocal(
-          id: solicitud.id.toString(),
-          clientOperationId:
-              clientOperationId,
-          descripcion:
-              solicitud.descripcion,
-          status:
-              solicitud.status.name,
-          createdAt:
-              solicitud.fechaCreacion,
-        );
-
-        if (!mounted) return;
-
-        _mostrarMensaje(
-          'Solicitud creada correctamente '
-          'en el servidor.',
-        );
-
-        _descripcionController.clear();
-
-        await Future.delayed(
-          const Duration(
-            milliseconds: 800,
-          ),
-        );
-
-        if (!mounted) return;
-
-        Navigator.of(context).pop(true);
-      } catch (e) {
-        debugPrint(
-          'NO HAY CONEXIÓN O FALLÓ EL SERVIDOR.',
-        );
-        debugPrint(
-          'Guardando operación offline...',
-        );
-        debugPrint(
-          'Error: $e',
-        );
-
-        await _guardarOperacionOffline(
+      } on SocketException catch (error) {
+        await _guardarSolicitudParaSincronizar(
           idUsuario: idUsuario,
-          clientOperationId:
-              clientOperationId,
+          idCategoria: idCategoria,
+          clientOperationId: clientOperationId,
           descripcion: descripcion,
+          error: error,
         );
-
-        if (!mounted) return;
-
-        _mostrarMensaje(
-          'Sin conexión. La solicitud quedó '
-          'guardada y será sincronizada '
-          'posteriormente.',
+        return;
+      } on TimeoutException catch (error) {
+        await _guardarSolicitudParaSincronizar(
+          idUsuario: idUsuario,
+          idCategoria: idCategoria,
+          clientOperationId: clientOperationId,
+          descripcion: descripcion,
+          error: error,
         );
-
-        _descripcionController.clear();
-
-        await Future.delayed(
-          const Duration(
-            milliseconds: 800,
-          ),
+        return;
+      } on http.ClientException catch (error) {
+        await _guardarSolicitudParaSincronizar(
+          idUsuario: idUsuario,
+          idCategoria: idCategoria,
+          clientOperationId: clientOperationId,
+          descripcion: descripcion,
+          error: error,
         );
-
-        if (!mounted) return;
-
-        Navigator.of(context).pop(true);
+        return;
+      } on ApiServiceException catch (error) {
+        if (!error.isNetworkFailure) rethrow;
+        await _guardarSolicitudParaSincronizar(
+          idUsuario: idUsuario,
+          idCategoria: idCategoria,
+          clientOperationId: clientOperationId,
+          descripcion: descripcion,
+          error: error,
+        );
+        return;
       }
+
+      debugPrint(
+        'SOLICITUD CREADA ONLINE - ID: ${solicitud.id}',
+      );
+
+      await _guardarSolicitudLocal(
+        id: solicitud.id.toString(),
+        clientOperationId: clientOperationId,
+        descripcion: solicitud.descripcion,
+        status: solicitud.status.name,
+        createdAt: solicitud.fechaCreacion,
+      );
+
+      if (_foto != null) {
+        try {
+          await EvidenceService.upload(
+            idSolicitud: solicitud.id,
+            filePath: _foto!.path,
+          );
+        } on DioException catch (error) {
+          if (error.response == null) {
+            await _guardarOperacionOffline(
+              idUsuario: idUsuario,
+              idCategoria: idCategoria,
+              clientOperationId: clientOperationId,
+              descripcion: descripcion,
+            );
+            if (!mounted) return;
+            _mostrarMensaje(
+              'Solicitud creada. La fotografía quedó pendiente de sincronización.',
+            );
+            _descripcionController.clear();
+            await Future.delayed(const Duration(milliseconds: 800));
+            if (!mounted) return;
+            Navigator.of(context).pop(true);
+            return;
+          }
+
+          if (error.response?.statusCode == 400 ||
+              error.response?.statusCode == 413 ||
+              error.response?.statusCode == 415) {
+            if (!mounted) return;
+            _mostrarMensaje(
+              'La solicitud quedó creada, pero el servidor rechazó '
+              'la fotografía. Usa una imagen JPEG, PNG o WebP de hasta 10 MB.',
+              esError: true,
+            );
+            _descripcionController.clear();
+            await Future.delayed(const Duration(milliseconds: 800));
+            if (!mounted) return;
+            Navigator.of(context).pop(true);
+            return;
+          }
+
+          rethrow;
+        }
+      }
+
+      if (!mounted) return;
+
+      _mostrarMensaje(
+        _foto == null
+            ? 'Solicitud creada correctamente en el servidor.'
+            : 'Solicitud y fotografía creadas correctamente en el servidor.',
+      );
+      _descripcionController.clear();
+
+      await Future.delayed(const Duration(milliseconds: 800));
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
     } catch (e) {
       debugPrint(
         'ERROR CREANDO SOLICITUD: $e',
@@ -325,6 +450,32 @@ class _CrearSolicitudScreenState
         });
       }
     }
+  }
+
+  Future<void> _guardarSolicitudParaSincronizar({
+    required int idUsuario,
+    required int idCategoria,
+    required String clientOperationId,
+    required String descripcion,
+    required Object error,
+  }) async {
+    debugPrint('No se pudo contactar con el servidor: $error');
+    await _guardarOperacionOffline(
+      idUsuario: idUsuario,
+      idCategoria: idCategoria,
+      clientOperationId: clientOperationId,
+      descripcion: descripcion,
+    );
+
+    if (!mounted) return;
+    _mostrarMensaje(
+      'Sin conexión. La solicitud quedó guardada y será sincronizada posteriormente.',
+    );
+    _descripcionController.clear();
+
+    await Future.delayed(const Duration(milliseconds: 800));
+    if (!mounted) return;
+    Navigator.of(context).pop(true);
   }
 
   // ============================================================
@@ -376,6 +527,7 @@ class _CrearSolicitudScreenState
 
   Future<void> _guardarOperacionOffline({
     required int idUsuario,
+    required int idCategoria,
     required String clientOperationId,
     required String descripcion,
   }) async {
@@ -385,7 +537,7 @@ class _CrearSolicitudScreenState
     final payload = jsonEncode({
       'idUsuario': idUsuario,
       'idCategoria':
-          _idCategoriaPlomeria,
+          idCategoria,
       'clientOperationId':
           clientOperationId,
       'descripcion':
@@ -403,10 +555,7 @@ class _CrearSolicitudScreenState
       'precision':
           _precision,
 
-      // La fotografía se mantiene como evidencia
-      // local de la sesión. No se sube al backend
-      // porque el endpoint actual no implementa
-      // carga de archivos.
+      'fotoPath': _foto?.path,
       'fotoTomada':
           _foto != null,
     });
@@ -608,46 +757,60 @@ class _CrearSolicitudScreenState
                 height: 8,
               ),
 
-              Container(
-                width:
-                    double.infinity,
-                padding:
-                    const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 15,
-                ),
-                decoration:
-                    BoxDecoration(
-                  border:
-                      Border.all(
-                    color:
-                        Colors.grey.shade400,
-                  ),
-                  borderRadius:
-                      BorderRadius.circular(
-                    12,
-                  ),
-                ),
-                child:
-                    const Row(
+              if (_cargandoCategorias)
+                const LinearProgressIndicator()
+              else if (_errorCategorias != null)
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(
-                      Icons.plumbing,
-                    ),
-                    SizedBox(
-                      width: 12,
-                    ),
                     Text(
-                      'Plomeria',
-                      style:
-                          TextStyle(
-                        fontSize:
-                            16,
-                      ),
+                      _errorCategorias!,
+                      style: TextStyle(color: Colors.red.shade700),
+                    ),
+                    TextButton.icon(
+                      onPressed: _cargarCategorias,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Reintentar'),
                     ),
                   ],
+                )
+              else if (_categorias.isEmpty)
+                const Text('No hay categorías activas disponibles.')
+              else
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    DropdownButtonFormField<int>(
+                      initialValue: _idCategoriaSeleccionada,
+                      decoration: const InputDecoration(
+                        border: OutlineInputBorder(),
+                        labelText: 'Selecciona un servicio',
+                      ),
+                      items: _categorias
+                          .map(
+                            (categoria) => DropdownMenuItem<int>(
+                              value: categoria.id,
+                              child: Text(categoria.nombre),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (idCategoria) {
+                        setState(() {
+                          _idCategoriaSeleccionada = idCategoria;
+                        });
+                      },
+                    ),
+                    if (_categoriasDesdeCache)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          'Catálogo guardado en este dispositivo; '
+                          'se actualizará al recuperar la conexión.',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
+                  ],
                 ),
-              ),
 
               const SizedBox(
                 height: 20,
@@ -1080,7 +1243,10 @@ class _CrearSolicitudScreenState
                 child:
                     ElevatedButton.icon(
                   onPressed:
-                      _guardando
+                      _guardando ||
+                              _cargandoCategorias ||
+                              _categorias.isEmpty ||
+                              _errorCategorias != null
                           ? null
                           : _crearSolicitud,
                   icon:

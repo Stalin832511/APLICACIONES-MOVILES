@@ -18,9 +18,9 @@ class ApiClient {
   static final Dio instance = Dio(
     BaseOptions(
       baseUrl: ApiConfig.baseUrl,
-      connectTimeout: const Duration(seconds: 10),
-      receiveTimeout: const Duration(seconds: 10),
-      sendTimeout: const Duration(seconds: 10),
+      connectTimeout: const Duration(),
+      receiveTimeout: const Duration(),
+      sendTimeout: const Duration(),
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
@@ -44,9 +44,9 @@ class ApiClient {
   /// ciclos infinitos durante el retry.
   static final Dio retryDio = Dio(
     BaseOptions(
-      connectTimeout: const Duration(seconds: 10),
-      receiveTimeout: const Duration(seconds: 10),
-      sendTimeout: const Duration(seconds: 10),
+      connectTimeout: const Duration(),
+      receiveTimeout: const Duration(),
+      sendTimeout: const Duration(),
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',

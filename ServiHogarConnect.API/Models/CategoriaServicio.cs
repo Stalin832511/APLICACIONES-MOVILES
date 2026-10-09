@@ -8,6 +8,8 @@ public class CategoriaServicio
 
     public string? Descripcion { get; set; }
 
+    public bool Activa { get; set; } = true;
+
     public ICollection<SolicitudServicio> Solicitudes { get; set; }
         = new List<SolicitudServicio>();
 }

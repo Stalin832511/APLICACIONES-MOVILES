@@ -28,9 +28,11 @@ class ApiConfig {
   /// Esta dirección corresponde a la computadora donde
   /// se ejecuta actualmente la API de ServiHogar Connect.
   ///
-  /// Para utilizar la aplicación desde un teléfono físico,
-  /// la computadora y el teléfono deben estar conectados
-  /// a la misma red local.
-  static const String baseUrl =
-      'http://192.168.100.104:5125';
+  /// El valor predeterminado funciona con un teléfono Android
+  /// conectado por USB y `adb reverse tcp:5125 tcp:5125`.
+  /// Los emuladores Android deben sobrescribirlo con 10.0.2.2.
+  static const String baseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'http://127.0.0.1:5125',
+  );
 }

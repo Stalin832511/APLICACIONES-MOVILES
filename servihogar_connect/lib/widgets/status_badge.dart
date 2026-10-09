@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 enum RequestStatus {
   pendiente,
   enCamino,
+  enProceso,
   completado,
 }
 
@@ -21,6 +22,15 @@ extension RequestStatusParsing on RequestStatus {
       case 'en_camino':
       case 'encamino':
         return RequestStatus.enCamino;
+
+      case 'en proceso':
+      case 'en_proceso':
+        return RequestStatus.enProceso;
+
+      case 'publicada':
+      case 'asignada':
+      case 'pendiente':
+        return RequestStatus.pendiente;
 
       case 'completado':
       case 'completada':
@@ -72,6 +82,15 @@ class StatusBadge extends StatelessWidget {
           border: const Color(0xFFA9C9F7),
           label: 'En camino',
           icon: Icons.directions_car_filled_rounded,
+        );
+
+      case RequestStatus.enProceso:
+        return (
+          bg: const Color(0xFFE8F1FF),
+          fg: const Color(0xFF1769AA),
+          border: const Color(0xFFA9C9F7),
+          label: 'En proceso',
+          icon: Icons.handyman_rounded,
         );
 
       case RequestStatus.completado:

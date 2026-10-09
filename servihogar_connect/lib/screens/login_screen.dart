@@ -3,7 +3,10 @@ import 'package:flutter/material.dart';
 import '../config/app_config.dart';
 import '../database/app_database.dart';
 import '../services/auth_service.dart';
-import 'home_screen.dart';
+import 'admin_dashboard.dart';
+import 'main_navigation_screen.dart';
+import 'professional_dashboard.dart';
+import 'registration_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   final AppDatabase database;
@@ -20,15 +23,9 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState
     extends State<LoginScreen> {
-  final _emailController =
-      TextEditingController(
-    text: 'admin@servihogar.com',
-  );
+  final _emailController = TextEditingController();
 
-  final _passwordController =
-      TextEditingController(
-    text: '123456',
-  );
+  final _passwordController = TextEditingController();
 
   bool _cargando = false;
   bool _mostrarPassword = false;
@@ -54,14 +51,12 @@ class _LoginScreenState
       if (!mounted) return;
 
       if (exito) {
+        final role = await AuthService.getUserRole();
+        if (!mounted) return;
         Navigator.of(context)
             .pushReplacement(
           MaterialPageRoute(
-            builder: (_) =>
-                HomeScreen(
-              database:
-                  widget.database,
-            ),
+            builder: (_) => _screenForRole(role),
           ),
         );
       } else {
@@ -70,12 +65,14 @@ class _LoginScreenState
               'Las credenciales ingresadas no son correctas.';
         });
       }
+
     } catch (e) {
       if (!mounted) return;
 
       setState(() {
-        _error =
-            'No se pudo conectar con el servidor.';
+        _error = e is AuthServiceException
+            ? e.message
+            : 'No se pudo conectar con el servidor. Inténtalo de nuevo.';
       });
     } finally {
       if (mounted) {
@@ -84,6 +81,19 @@ class _LoginScreenState
         });
       }
     }
+
+  }
+
+  Widget _screenForRole(String? role) {
+    final normalized = role?.trim().toLowerCase() ?? '';
+    if (normalized.contains('admin')) {
+      return AdminDashboard(database: widget.database);
+    }
+    if (normalized.contains('profesional') ||
+        normalized.contains('professional')) {
+      return ProfessionalDashboard(database: widget.database);
+    }
+    return MainNavigationScreen(database: widget.database);
   }
 
   @override
@@ -130,11 +140,11 @@ class _LoginScreenState
               child: Column(
                 children: [
                   const SizedBox(
-                    height: 18,
+                    height: 8,
                   ),
                   _buildBrand(),
                   const SizedBox(
-                    height: 38,
+                    height: 30,
                   ),
                   _buildLoginCard(
                     context,
@@ -173,108 +183,38 @@ class _LoginScreenState
     );
   }
 
+  /// Logo real de la app en el encabezado de Login.
+  ///
+  /// El logo ya incluye el nombre "ServiHogar CONNECT" y el eslogan,
+  /// por lo que reemplaza por completo al ícono genérico anterior.
   Widget _buildBrand() {
     return Column(
       children: [
-        Container(
-          width: 88,
-          height: 88,
-          decoration:
-              BoxDecoration(
-            gradient:
-                const LinearGradient(
-              colors: [
-                Color(0xFF7C3AED),
-                Color(0xFF4F46E5),
-              ],
-              begin:
-                  Alignment.topLeft,
-              end:
-                  Alignment.bottomRight,
+        ClipRRect(
+          borderRadius: BorderRadius.circular(28),
+          child: Container(
+            constraints: const BoxConstraints(
+              maxWidth: 260,
             ),
-            borderRadius:
-                BorderRadius.circular(
-              27,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color:
-                    const Color(
-                  0xFF8B5CF6,
-                ).withValues(
-                  alpha: 0.28,
-                ),
-                blurRadius: 28,
-                offset:
-                    const Offset(
-                  0,
-                  12,
-                ),
-              ),
-            ],
-          ),
-          child: Stack(
-            alignment:
-                Alignment.center,
-            children: [
-              Positioned(
-                right: -8,
-                top: -10,
-                child: Container(
-                  width: 45,
-                  height: 45,
-                  decoration:
-                      BoxDecoration(
-                    color:
-                        Colors.white
-                            .withValues(
-                      alpha: 0.08,
-                    ),
-                    shape:
-                        BoxShape.circle,
+            decoration: BoxDecoration(
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF8B5CF6).withValues(
+                    alpha: 0.28,
                   ),
+                  blurRadius: 32,
+                  offset: const Offset(0, 14),
                 ),
-              ),
-              const Icon(
-                Icons
-                    .home_repair_service_rounded,
-                color:
-                    Colors.white,
-                size: 42,
-              ),
-            ],
+              ],
+            ),
+            child: Image.asset(
+              'assets/images/Logo1.jpeg',
+              fit: BoxFit.contain,
+            ),
           ),
         ),
         const SizedBox(
-          height: 20,
-        ),
-        const Text(
-          'ServiHogar',
-          style: TextStyle(
-            color:
-                Color(0xFFF8F7FF),
-            fontSize: 29,
-            fontWeight:
-                FontWeight.w800,
-            letterSpacing: -0.8,
-          ),
-        ),
-        const SizedBox(
-          height: 3,
-        ),
-        const Text(
-          'CONNECT',
-          style: TextStyle(
-            color:
-                Color(0xFF8B5CF6),
-            fontSize: 12,
-            fontWeight:
-                FontWeight.w800,
-            letterSpacing: 3.2,
-          ),
-        ),
-        const SizedBox(
-          height: 12,
+          height: 16,
         ),
         Text(
           'Servicios para tu hogar,\n'
@@ -382,6 +322,23 @@ class _LoginScreenState
             height: 22,
           ),
           _buildLoginButton(),
+          const SizedBox(height: 12),
+          Center(
+            child: TextButton(
+              onPressed: _cargando
+                  ? null
+                  : () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => RegistrationScreen(
+                            database: widget.database,
+                          ),
+                        ),
+                      );
+                    },
+              child: const Text('¿No tienes cuenta? Regístrate'),
+            ),
+          ),
           const SizedBox(
             height: 17,
           ),

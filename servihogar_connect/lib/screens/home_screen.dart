@@ -1,771 +1,295 @@
 import 'package:flutter/material.dart';
 
 import '../database/app_database.dart';
-import '../services/api_service.dart';
+import '../models/categoria.dart';
 import '../services/auth_service.dart';
-import 'profile_screen.dart';
-import 'solicitudes_screen.dart';
-
-/// ============================================================
-/// COLORES PRINCIPALES DE SERVIHOGAR CONNECT
-/// ============================================================
-
-class HomeColors {
-  HomeColors._();
-
-  static const background =
-      Color(0xFF09090F);
-
-  static const surface =
-      Color(0xFF12121B);
-
-  static const surfaceLight =
-      Color(0xFF1A1925);
-
-  static const purple =
-      Color(0xFF8B5CF6);
-
-  static const purpleDark =
-      Color(0xFF6D28D9);
-
-  static const blue =
-      Color(0xFF3B82F6);
-
-  static const cyan =
-      Color(0xFF14B8A6);
-
-  static const orange =
-      Color(0xFFF59E0B);
-
-  static const green =
-      Color(0xFF22C55E);
-
-  static const white =
-      Color(0xFFF8F7FF);
-
-  static const gray =
-      Color(0xFF9A98A8);
-
-  static const border =
-      Color(0xFF252431);
-}
-
-/// ============================================================
-/// PANTALLA PRINCIPAL - INICIO
-/// ============================================================
+import '../services/catalog_service.dart';
+import '../widgets/service_category_style.dart';
+import 'crear_solicitud_screen.dart';
 
 class HomeScreen extends StatefulWidget {
-  final AppDatabase database;
-
   const HomeScreen({
     super.key,
     required this.database,
+    this.onOpenRequests,
+    this.onOpenActivity,
+    this.onOpenCatalog,
+    this.onOpenProfile,
   });
 
+  final AppDatabase database;
+  final VoidCallback? onOpenRequests;
+  final VoidCallback? onOpenActivity;
+  final VoidCallback? onOpenCatalog;
+  final VoidCallback? onOpenProfile;
+
   @override
-  State<HomeScreen> createState() =>
-      _HomeScreenState();
+  State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState
-    extends State<HomeScreen> {
-  late final AppDatabase _database;
-
-  String _nombreUsuario = 'Cliente';
-
-  bool _cargandoUsuario = true;
+class _HomeScreenState extends State<HomeScreen> {
+  List<CategoriaModel> _categories = [];
+  bool _loading = true;
+  bool _fromCache = false;
+  String? _error;
+  String? _email;
 
   @override
   void initState() {
     super.initState();
-
-    _database = widget.database;
-
-    _cargarUsuario();
+    _loadCategories();
+    _loadUser();
   }
 
-  Future<void> _cargarUsuario() async {
+  Future<void> _loadUser() async {
+    final email = await AuthService.getUserEmail();
+    if (mounted) setState(() => _email = email);
+  }
+
+  Future<void> _loadCategories() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
-      final email =
-          await AuthService.getUserEmail();
-
+      final result = await CatalogService.loadCategories();
       if (!mounted) return;
-
       setState(() {
-        _nombreUsuario =
-            _obtenerNombre(email);
-        _cargandoUsuario = false;
+        _categories = result.categories;
+        _fromCache = result.fromCache;
+        _loading = false;
       });
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
-
       setState(() {
-        _nombreUsuario = 'Cliente';
-        _cargandoUsuario = false;
+        _error = error.toString().replaceFirst('Exception: ', '');
+        _loading = false;
       });
     }
   }
 
-  String _obtenerNombre(String? email) {
-    if (email == null ||
-        email.trim().isEmpty) {
-      return 'Cliente';
-    }
-
-    final usuario =
-        email.split('@').first.trim();
-
-    if (usuario.isEmpty) {
-      return 'Cliente';
-    }
-
-    final palabras = usuario
-        .replaceAll(
-          RegExp(r'[._-]+'),
-          ' ',
-        )
-        .split(' ')
-        .where(
-          (element) =>
-              element.trim().isNotEmpty,
-        )
-        .toList();
-
-    if (palabras.isEmpty) {
-      return 'Cliente';
-    }
-
-    return palabras
-        .map(
-          (palabra) =>
-              palabra[0].toUpperCase() +
-              palabra
-                  .substring(1)
-                  .toLowerCase(),
-        )
-        .join(' ');
-  }
-
-  void _mostrarProximamente(
-    String nombre,
-  ) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              Container(
-                width: 34,
-                height: 34,
-                decoration:
-                    BoxDecoration(
-                  color: HomeColors.purple
-                      .withValues(
-                    alpha: 0.18,
-                  ),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.auto_awesome_rounded,
-                  color:
-                      HomeColors.purple,
-                  size: 18,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  '$nombre estará disponible próximamente.',
-                  style:
-                      const TextStyle(
-                    fontWeight:
-                        FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          backgroundColor:
-              HomeColors.surfaceLight,
-          behavior:
-              SnackBarBehavior.floating,
-          margin:
-              const EdgeInsets.all(16),
-          shape:
-              RoundedRectangleBorder(
-            borderRadius:
-                BorderRadius.circular(14),
-          ),
-          duration:
-              const Duration(
-            seconds: 2,
-          ),
-        ),
-      );
-  }
-
-  Future<void>
-      _abrirMisSolicitudes() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) =>
-            MisSolicitudesScreen(
-          database: _database,
+  Future<void> _createRequest({int? categoryId}) async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => CrearSolicitudScreen(
+          database: widget.database,
+          initialCategoryId: categoryId,
         ),
       ),
     );
   }
 
-  Future<void>
-      _abrirNuevaSolicitud() async {
-    await _abrirMisSolicitudes();
+  void _openRequests() {
+    final callback = widget.onOpenRequests;
+    if (callback != null) {
+      callback();
+    } else {
+      _showNavigationUnavailable();
+    }
+  }
+
+  void _openCatalog() {
+    final callback = widget.onOpenCatalog;
+    if (callback != null) {
+      callback();
+    } else {
+      _showNavigationUnavailable();
+    }
+  }
+
+  void _showNavigationUnavailable() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Esta sección no está disponible.')),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final firstName = (_email ?? '').split('@').first;
+
     return Scaffold(
-      backgroundColor:
-          HomeColors.background,
-
-      body: SafeArea(
-        child: RefreshIndicator(
-          color: HomeColors.purple,
-          backgroundColor:
-              HomeColors.surface,
-          onRefresh: _cargarUsuario,
-          child:
-              SingleChildScrollView(
-            physics:
-                const AlwaysScrollableScrollPhysics(),
-            padding:
-                const EdgeInsets.fromLTRB(
-              18,
-              12,
-              18,
-              30,
+      appBar: AppBar(
+        title: const Text('ServiHogar'),
+        actions: [
+          IconButton(
+            tooltip: 'Mi perfil',
+            onPressed: widget.onOpenProfile,
+            icon: const Icon(Icons.person_outline_rounded),
+          ),
+        ],
+      ),
+      body: RefreshIndicator(
+        onRefresh: _loadCategories,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
+          children: [
+            _buildLogoHeader(context),
+            const SizedBox(height: 20),
+            Text(
+              firstName.isEmpty ? 'Hola, bienvenido' : 'Hola, $firstName',
+              style: theme.textTheme.titleMedium?.copyWith(
+                color: colors.onSurfaceVariant,
+              ),
             ),
-            child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+            const SizedBox(height: 4),
+            Text(
+              '¿Qué necesitas resolver hoy?',
+              style: theme.textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 18),
+            _buildRequestBanner(context),
+            const SizedBox(height: 28),
+            Row(
               children: [
-                _buildHeader(),
-
-                const SizedBox(
-                  height: 22,
+                Expanded(
+                  child: Text(
+                    'Servicios para tu hogar',
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 ),
-
-                _buildWelcomeCard(),
-
-                const SizedBox(
-                  height: 28,
-                ),
-
-                _buildSectionTitle(),
-
-                const SizedBox(
-                  height: 14,
-                ),
-
-                _buildServicesGrid(),
-
-                const SizedBox(
-                  height: 26,
-                ),
-
-                _buildQuickAccessCard(),
-
-                const SizedBox(
-                  height: 18,
-                ),
-
-                const ApiStatusCard(),
-
-                const SizedBox(
-                  height: 10,
+                TextButton(
+                  onPressed: _openCatalog,
+                  child: const Text('Ver todos'),
                 ),
               ],
             ),
-          ),
-        ),
-      ),
-
-      bottomNavigationBar:
-          _buildBottomNavigation(),
-    );
-  }
-
-  Widget _buildHeader() {
-    return Row(
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment:
-                CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'ServiHogar',
-                style: TextStyle(
-                  color:
-                      HomeColors.white,
-                  fontSize: 25,
-                  fontWeight:
-                      FontWeight.w800,
-                  letterSpacing: -0.4,
+            const SizedBox(height: 12),
+            if (_fromCache)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Text(
+                  'Mostrando el catálogo guardado en este dispositivo.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colors.onSurfaceVariant,
+                  ),
                 ),
               ),
-              const SizedBox(height: 3),
+            if (_loading && _categories.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 36),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (_error != null && _categories.isEmpty)
+              _buildLoadError(context)
+            else if (_categories.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 28),
+                child: Text(
+                  'No hay servicios disponibles por ahora.',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    color: colors.onSurfaceVariant,
+                  ),
+                ),
+              )
+            else
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final columns = constraints.maxWidth >= 640 ? 3 : 2;
+                  return GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: _categories.length,
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: columns,
+                      crossAxisSpacing: 12,
+                      mainAxisSpacing: 12,
+                      childAspectRatio: 1.28,
+                    ),
+                    itemBuilder: (context, index) {
+                      final category = _categories[index];
+                      return _CategoryCard(
+                        category: category,
+                        onTap: () => _createRequest(categoryId: category.id),
+                      );
+                    },
+                  );
+                },
+              ),
+            if (_error != null && _categories.isNotEmpty) ...[
+              const SizedBox(height: 12),
               Text(
-                'Servicios para tu hogar',
-                style: TextStyle(
-                  color: HomeColors.gray
-                      .withValues(
-                    alpha: 0.95,
-                  ),
-                  fontSize: 13,
-                  fontWeight:
-                      FontWeight.w500,
+                'No se pudo actualizar el catálogo. Se muestran los últimos '
+                'servicios cargados.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colors.error,
                 ),
               ),
             ],
-          ),
-        ),
-
-        _HeaderIconButton(
-          icon:
-              Icons.notifications_none_rounded,
-          onTap: () {
-            _mostrarProximamente(
-              'Notificaciones',
-            );
-          },
-        ),
-      ],
-    );
-  }
-
-  Widget _buildWelcomeCard() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(22),
-      decoration: BoxDecoration(
-        borderRadius:
-            BorderRadius.circular(24),
-        gradient:
-            const LinearGradient(
-          colors: [
-            Color(0xFF312E81),
-            Color(0xFF6D28D9),
-            Color(0xFF7C3AED),
+            const SizedBox(height: 28),
+            _buildShortcuts(context),
           ],
-          begin:
-              Alignment.topLeft,
-          end:
-              Alignment.bottomRight,
         ),
-        boxShadow: [
-          BoxShadow(
-            color: HomeColors.purple
-                .withValues(
-              alpha: 0.20,
-            ),
-            blurRadius: 24,
-            offset:
-                const Offset(0, 12),
-          ),
-        ],
-      ),
-      child: Stack(
-        children: [
-          Positioned(
-            right: -20,
-            top: -35,
-            child: Container(
-              width: 130,
-              height: 130,
-              decoration:
-                  BoxDecoration(
-                color: Colors.white
-                    .withValues(
-                  alpha: 0.06,
-                ),
-                shape:
-                    BoxShape.circle,
-              ),
-            ),
-          ),
-
-          Positioned(
-            right: 20,
-            bottom: -55,
-            child: Container(
-              width: 100,
-              height: 100,
-              decoration:
-                  BoxDecoration(
-                color: Colors.white
-                    .withValues(
-                  alpha: 0.04,
-                ),
-                shape:
-                    BoxShape.circle,
-              ),
-            ),
-          ),
-
-          Column(
-            crossAxisAlignment:
-                CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 42,
-                    height: 42,
-                    decoration:
-                        BoxDecoration(
-                      color: Colors.white
-                          .withValues(
-                        alpha: 0.12,
-                      ),
-                      shape:
-                          BoxShape.circle,
-                    ),
-                    child:
-                        const Icon(
-                      Icons.home_rounded,
-                      color:
-                          Colors.white,
-                      size: 22,
-                    ),
-                  ),
-
-                  const SizedBox(
-                    width: 11,
-                  ),
-
-                  Expanded(
-                    child: Text(
-                      _cargandoUsuario
-                          ? 'Hola 👋'
-                          : 'Hola 👋 $_nombreUsuario',
-                      style:
-                          const TextStyle(
-                        color:
-                            Colors.white70,
-                        fontSize: 14,
-                        fontWeight:
-                            FontWeight.w600,
-                      ),
-                      maxLines: 1,
-                      overflow:
-                          TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(
-                height: 18,
-              ),
-
-              const Text(
-                '¿Qué necesitas hoy?',
-                style: TextStyle(
-                  color:
-                      Colors.white,
-                  fontSize: 24,
-                  fontWeight:
-                      FontWeight.w800,
-                  letterSpacing: -0.5,
-                ),
-              ),
-
-              const SizedBox(
-                height: 8,
-              ),
-
-              const Text(
-                'Encuentra servicios para tu hogar '
-                'de forma sencilla y segura.',
-                style: TextStyle(
-                  color:
-                      Colors.white70,
-                  fontSize: 13,
-                  height: 1.45,
-                  fontWeight:
-                      FontWeight.w500,
-                ),
-              ),
-
-              const SizedBox(
-                height: 19,
-              ),
-
-              SizedBox(
-                height: 45,
-                child:
-                    ElevatedButton.icon(
-                  onPressed:
-                      _abrirNuevaSolicitud,
-                  icon:
-                      const Icon(
-                    Icons.add_rounded,
-                    size: 20,
-                  ),
-                  label:
-                      const Text(
-                    'Nueva solicitud',
-                    style: TextStyle(
-                      fontWeight:
-                          FontWeight.w700,
-                    ),
-                  ),
-                  style:
-                      ElevatedButton.styleFrom(
-                    backgroundColor:
-                        Colors.white,
-                    foregroundColor:
-                        HomeColors
-                            .purpleDark,
-                    elevation: 0,
-                    padding:
-                        const EdgeInsets
-                            .symmetric(
-                      horizontal: 18,
-                    ),
-                    shape:
-                        RoundedRectangleBorder(
-                      borderRadius:
-                          BorderRadius
-                              .circular(
-                        13,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
       ),
     );
   }
 
-  Widget _buildSectionTitle() {
-    return const Column(
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Servicios',
-          style: TextStyle(
-            color:
-                HomeColors.white,
-            fontSize: 20,
-            fontWeight:
-                FontWeight.w800,
-            letterSpacing: -0.2,
+  /// Logo grande de bienvenida al abrir la app.
+  ///
+  /// Es el primer elemento del scroll: el usuario lo ve de inmediato
+  /// al entrar y puede deslizar hacia abajo para ver el resto de Inicio.
+  Widget _buildLogoHeader(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: AspectRatio(
+          aspectRatio: 1.05,
+          child: Image.asset(
+            'assets/images/Logo1.jpeg',
+            fit: BoxFit.cover,
           ),
         ),
-        SizedBox(height: 4),
-        Text(
-          'Elige el servicio que necesitas',
-          style: TextStyle(
-            color:
-                HomeColors.gray,
-            fontSize: 13,
-            fontWeight:
-                FontWeight.w500,
-          ),
-        ),
-      ],
+      ),
     );
   }
 
-  Widget _buildServicesGrid() {
-    return GridView.count(
-      crossAxisCount: 2,
-      crossAxisSpacing: 12,
-      mainAxisSpacing: 12,
-      shrinkWrap: true,
-      physics:
-          const NeverScrollableScrollPhysics(),
-      childAspectRatio: 1.18,
-      children: [
-        _ServiceCard(
-          icon:
-              Icons.bolt_rounded,
-          title: 'Electricidad',
-          subtitle:
-              'Electricistas',
-          color:
-              const Color(0xFFA855F7),
-          onTap: () {
-            _mostrarProximamente(
-              'Electricidad',
-            );
-          },
-        ),
-
-        _ServiceCard(
-          icon:
-              Icons.water_drop_outlined,
-          title: 'Plomería',
-          subtitle: 'Plomeros',
-          color:
-              HomeColors.blue,
-          onTap: () {
-            _abrirNuevaSolicitud();
-          },
-        ),
-
-        _ServiceCard(
-          icon:
-              Icons.cleaning_services_outlined,
-          title: 'Limpieza',
-          subtitle:
-              'Profesionales',
-          color:
-              HomeColors.cyan,
-          onTap: () {
-            _mostrarProximamente(
-              'Limpieza',
-            );
-          },
-        ),
-
-        _ServiceCard(
-          icon:
-              Icons.handyman_outlined,
-          title: 'General',
-          subtitle:
-              'Otros servicios',
-          color:
-              HomeColors.orange,
-          onTap: () {
-            _mostrarProximamente(
-              'Servicios generales',
-            );
-          },
-        ),
-      ],
-    );
-  }
-
-  Widget _buildQuickAccessCard() {
-    return Material(
-      color: Colors.transparent,
+  Widget _buildRequestBanner(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      color: colors.primaryContainer,
       child: InkWell(
-        borderRadius:
-            BorderRadius.circular(20),
-        onTap:
-            _abrirMisSolicitudes,
-        child: Container(
-          width: double.infinity,
-          padding:
-              const EdgeInsets.all(17),
-          decoration:
-              BoxDecoration(
-            color:
-                HomeColors.surface,
-            borderRadius:
-                BorderRadius.circular(
-              20,
-            ),
-            border: Border.all(
-              color:
-                  HomeColors.border,
-            ),
-          ),
+        onTap: () => _createRequest(),
+        child: Padding(
+          padding: const EdgeInsets.all(18),
           child: Row(
             children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration:
-                    BoxDecoration(
-                  color:
-                      HomeColors.purple
-                          .withValues(
-                    alpha: 0.12,
-                  ),
-                  borderRadius:
-                      BorderRadius.circular(
-                    15,
-                  ),
-                ),
-                child:
-                    const Icon(
-                  Icons
-                      .list_alt_rounded,
-                  color:
-                      HomeColors.purple,
-                  size: 25,
-                ),
+              Icon(
+                Icons.home_repair_service_rounded,
+                size: 34,
+                color: colors.onPrimaryContainer,
               ),
-
-              const SizedBox(
-                width: 13,
-              ),
-
-              const Expanded(
+              const SizedBox(width: 14),
+              Expanded(
                 child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment
-                          .start,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Mis Solicitudes',
-                      style:
-                          TextStyle(
-                        color:
-                            HomeColors
-                                .white,
-                        fontSize: 15,
-                        fontWeight:
-                            FontWeight.w800,
-                      ),
+                      'Solicita un servicio',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            color: colors.onPrimaryContainer,
+                            fontWeight: FontWeight.w700,
+                          ),
                     ),
-                    SizedBox(height: 4),
+                    const SizedBox(height: 3),
                     Text(
-                      'Consulta y administra tus solicitudes',
-                      style:
-                          TextStyle(
-                        color:
-                            HomeColors
-                                .gray,
-                        fontSize: 11.5,
-                        fontWeight:
-                            FontWeight.w500,
-                      ),
+                      'Cuéntanos qué necesitas y encuentra ayuda.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: colors.onPrimaryContainer,
+                          ),
                     ),
                   ],
                 ),
               ),
-
-              Container(
-                width: 34,
-                height: 34,
-                decoration:
-                    BoxDecoration(
-                  color:
-                      HomeColors
-                          .surfaceLight,
-                  borderRadius:
-                      BorderRadius.circular(
-                    11,
-                  ),
-                ),
-                child:
-                    const Icon(
-                  Icons
-                      .arrow_forward_ios_rounded,
-                  color:
-                      HomeColors.gray,
-                  size: 15,
-                ),
-              ),
+              Icon(Icons.arrow_forward_rounded, color: colors.onPrimaryContainer),
             ],
           ),
         ),
@@ -773,132 +297,66 @@ class _HomeScreenState
     );
   }
 
-  Widget _buildBottomNavigation() {
-    return Container(
-      decoration:
-          const BoxDecoration(
-        color:
-            HomeColors.surface,
-        border: Border(
-          top: BorderSide(
-            color:
-                HomeColors.border,
-            width: 0.7,
+  Widget _buildShortcuts(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Accesos rápidos',
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+        ),
+        const SizedBox(height: 10),
+        Card(
+          child: Column(
+            children: [
+              ListTile(
+                leading: const Icon(Icons.receipt_long_outlined),
+                title: const Text('Mis solicitudes'),
+                subtitle: const Text('Consulta el estado de tus servicios'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: _openRequests,
+              ),
+              const Divider(height: 1, indent: 16, endIndent: 16),
+              ListTile(
+                leading: const Icon(Icons.insights_outlined),
+                title: const Text('Actividad'),
+                subtitle: const Text('Revisa el resumen de tus solicitudes'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: widget.onOpenActivity ?? _openRequests,
+              ),
+            ],
           ),
         ),
-      ),
-      child: SafeArea(
-        top: false,
-        child:
-            NavigationBar(
-          height: 68,
-          backgroundColor:
-              HomeColors.surface,
-          indicatorColor:
-              HomeColors.purple
-                  .withValues(
-            alpha: 0.16,
-          ),
-          selectedIndex: 0,
-          labelBehavior:
-              NavigationDestinationLabelBehavior
-                  .alwaysShow,
-          onDestinationSelected:
-              (index) {
-            switch (index) {
-              case 0:
-                break;
+      ],
+    );
+  }
 
-              case 1:
-                _abrirMisSolicitudes();
-                break;
-
-              case 2:
-                _mostrarProximamente(
-                  'Chat',
-                );
-                break;
-
-              case 3:
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => ProfileScreen(
-                      database: _database,
-                    ),
-                  ),
-                );
-                break;
-            }
-          },
-          destinations:
-              const [
-            NavigationDestination(
-              icon: Icon(
-                Icons
-                    .home_outlined,
-                color:
-                    HomeColors.gray,
-              ),
-              selectedIcon:
-                  Icon(
-                Icons
-                    .home_rounded,
-                color:
-                    HomeColors
-                        .purple,
-              ),
-              label: 'Inicio',
+  Widget _buildLoadError(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          children: [
+            Icon(Icons.cloud_off_outlined, color: colors.error, size: 36),
+            const SizedBox(height: 8),
+            const Text(
+              'No se pudo cargar el catálogo de servicios.',
+              textAlign: TextAlign.center,
             ),
-            NavigationDestination(
-              icon: Icon(
-                Icons
-                    .receipt_long_outlined,
-                color:
-                    HomeColors.gray,
-              ),
-              selectedIcon:
-                  Icon(
-                Icons
-                    .receipt_long_rounded,
-                color:
-                    HomeColors
-                        .purple,
-              ),
-              label: 'Solicitudes',
+            const SizedBox(height: 8),
+            Text(
+              _error ?? '',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodySmall,
             ),
-            NavigationDestination(
-              icon: Icon(
-                Icons
-                    .chat_bubble_outline_rounded,
-                color:
-                    HomeColors.gray,
-              ),
-              selectedIcon:
-                  Icon(
-                Icons
-                    .chat_bubble_rounded,
-                color:
-                    HomeColors
-                        .purple,
-              ),
-              label: 'Chat',
-            ),
-            NavigationDestination(
-              icon: Icon(
-                Icons
-                    .person_outline_rounded,
-                color:
-                    HomeColors.gray,
-              ),
-              selectedIcon:
-                  Icon(
-                Icons
-                    .person_rounded,
-                color:
-                    HomeColors
-                        .purple,
-              ),
-              label: 'Perfil',
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: _loading ? null : _loadCategories,
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('Reintentar'),
             ),
           ],
         ),
@@ -907,358 +365,63 @@ class _HomeScreenState
   }
 }
 
-/// ============================================================
-/// BOTÓN DEL ENCABEZADO
-/// ============================================================
-
-class _HeaderIconButton
-    extends StatelessWidget {
-  final IconData icon;
-  final VoidCallback onTap;
-
-  const _HeaderIconButton({
-    required this.icon,
+class _CategoryCard extends StatelessWidget {
+  const _CategoryCard({
+    required this.category,
     required this.onTap,
   });
 
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius:
-            BorderRadius.circular(14),
-        child: Container(
-          width: 45,
-          height: 45,
-          decoration:
-              BoxDecoration(
-            color:
-                HomeColors.surfaceLight,
-            borderRadius:
-                BorderRadius.circular(
-              14,
-            ),
-            border: Border.all(
-              color:
-                  HomeColors.border,
-            ),
-          ),
-          child: Icon(
-            icon,
-            color:
-                HomeColors.white,
-            size: 22,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// ============================================================
-/// TARJETA DE SERVICIO
-/// ============================================================
-
-class _ServiceCard
-    extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final Color color;
+  final CategoriaModel category;
   final VoidCallback onTap;
 
-  const _ServiceCard({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.color,
-    required this.onTap,
-  });
-
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
+    final theme = Theme.of(context);
+    final color = ServiceCategoryStyle.color(category.nombre);
+    return Card(
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
-        borderRadius:
-            BorderRadius.circular(20),
-        child: Container(
-          padding:
-              const EdgeInsets.all(16),
-          decoration:
-              BoxDecoration(
-            color:
-                HomeColors.surface,
-            borderRadius:
-                BorderRadius.circular(
-              20,
-            ),
-            border: Border.all(
-              color:
-                  HomeColors.border,
-            ),
-          ),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
           child: Column(
-            crossAxisAlignment:
-                CrossAxisAlignment
-                    .start,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                width: 45,
-                height: 45,
-                decoration:
-                    BoxDecoration(
-                  color:
-                      color.withValues(
-                    alpha: 0.13,
-                  ),
-                  borderRadius:
-                      BorderRadius.circular(
-                    14,
-                  ),
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(13),
                 ),
                 child: Icon(
-                  icon,
+                  ServiceCategoryStyle.icon(category.nombre),
                   color: color,
-                  size: 25,
                 ),
               ),
-
               const Spacer(),
-
               Text(
-                title,
-                style:
-                    const TextStyle(
-                  color:
-                      HomeColors.white,
-                  fontSize: 14.5,
-                  fontWeight:
-                      FontWeight.w800,
+                category.nombre,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
                 ),
               ),
-
-              const SizedBox(
-                height: 4,
-              ),
-
+              const SizedBox(height: 3),
               Text(
-                subtitle,
-                style:
-                    const TextStyle(
-                  color:
-                      HomeColors.gray,
-                  fontSize: 11,
-                  fontWeight:
-                      FontWeight.w500,
+                (category.descripcion?.trim().isNotEmpty ?? false)
+                    ? category.descripcion!
+                    : 'Solicitar servicio',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-/// ============================================================
-/// ESTADO DE LA API
-/// ============================================================
-
-class ApiStatusCard
-    extends StatefulWidget {
-  const ApiStatusCard({
-    super.key,
-  });
-
-  @override
-  State<ApiStatusCard> createState() =>
-      _ApiStatusCardState();
-}
-
-class _ApiStatusCardState
-    extends State<ApiStatusCard> {
-  bool _loading = true;
-
-  bool _connected = false;
-
-  Map<String, dynamic>? _data;
-
-  @override
-  void initState() {
-    super.initState();
-
-    _checkApi();
-  }
-
-  Future<void> _checkApi() async {
-    if (!mounted) return;
-
-    setState(() {
-      _loading = true;
-    });
-
-    try {
-      final result =
-          await ApiService.checkHealth();
-
-      if (!mounted) return;
-
-      setState(() {
-        _data = result;
-        _connected = true;
-        _loading = false;
-      });
-    } catch (_) {
-      if (!mounted) return;
-
-      setState(() {
-        _connected = false;
-        _loading = false;
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final color = _connected
-        ? HomeColors.green
-        : const Color(0xFFEF4444);
-
-    return Container(
-      padding:
-          const EdgeInsets.all(15),
-      decoration:
-          BoxDecoration(
-        color:
-            HomeColors.surface,
-        borderRadius:
-            BorderRadius.circular(
-          18,
-        ),
-        border: Border.all(
-          color:
-              HomeColors.border,
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 43,
-            height: 43,
-            decoration:
-                BoxDecoration(
-              color:
-                  color.withValues(
-                alpha: 0.12,
-              ),
-              shape:
-                  BoxShape.circle,
-            ),
-            child: Icon(
-              _connected
-                  ? Icons
-                      .cloud_done_outlined
-                  : Icons
-                      .cloud_off_outlined,
-              color: color,
-              size: 22,
-            ),
-          ),
-
-          const SizedBox(
-            width: 12,
-          ),
-
-          Expanded(
-            child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment
-                      .start,
-              children: [
-                const Text(
-                  'Estado del sistema',
-                  style:
-                      TextStyle(
-                    color:
-                        HomeColors
-                            .white,
-                    fontSize: 13.5,
-                    fontWeight:
-                        FontWeight.w800,
-                  ),
-                ),
-
-                const SizedBox(
-                  height: 4,
-                ),
-
-                if (_loading)
-                  const Text(
-                    'Comprobando conexión...',
-                    style:
-                        TextStyle(
-                      color:
-                          HomeColors
-                              .gray,
-                      fontSize: 11,
-                    ),
-                  )
-                else
-                  Text(
-                    _connected
-                        ? 'API conectada correctamente'
-                        : 'API no disponible',
-                    style:
-                        TextStyle(
-                      color: _connected
-                          ? HomeColors
-                              .green
-                          : const Color(
-                              0xFFEF4444,
-                            ),
-                      fontSize: 11,
-                      fontWeight:
-                          FontWeight.w600,
-                    ),
-                  ),
-
-                if (_connected &&
-                    _data != null)
-                  Text(
-                    '${_data!['project'] ?? 'ServiHogar Connect'}',
-                    style:
-                        const TextStyle(
-                      color:
-                          HomeColors
-                              .gray,
-                      fontSize: 10,
-                    ),
-                  ),
-              ],
-            ),
-          ),
-
-          IconButton(
-            tooltip: 'Actualizar',
-            onPressed:
-                _loading
-                    ? null
-                    : _checkApi,
-            icon:
-                const Icon(
-              Icons
-                  .refresh_rounded,
-              color:
-                  HomeColors
-                      .purple,
-              size: 21,
-            ),
-          ),
-        ],
       ),
     );
   }

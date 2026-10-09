@@ -1,13 +1,30 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using ServiHogarConnect.API.Data;
 using ServiHogarConnect.API.Jobs;
+using ServiHogarConnect.API.Models;
 using ServiHogarConnect.API.Services;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
+
+if (builder.Environment.IsDevelopment())
+{
+    builder.Configuration.AddUserSecrets<Program>(optional: true);
+}
+
+var jwtSigningKey = builder.Configuration["Jwt:SigningKey"];
+if (string.IsNullOrWhiteSpace(jwtSigningKey) ||
+    Encoding.UTF8.GetByteCount(jwtSigningKey) < 32 ||
+    jwtSigningKey.Distinct().Count() < 12)
+{
+    throw new InvalidOperationException(
+        $"Jwt:SigningKey is missing or invalid for the {builder.Environment.EnvironmentName} environment. " +
+        "In Development, set it with `dotnet user-secrets set \"Jwt:SigningKey\" <key>`.");
+}
 
 // ==========================================
 // CONTROLADORES
@@ -23,6 +40,8 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(
         builder.Configuration.GetConnectionString(
             "DefaultConnection")));
+
+builder.Services.AddScoped<IPasswordHasher<Usuario>, PasswordHasher<Usuario>>();
 
 // ==========================================
 // CACHE EN MEMORIA
@@ -55,8 +74,7 @@ builder.Services.AddAuthentication(
 
                 IssuerSigningKey =
                     new SymmetricSecurityKey(
-                        Encoding.UTF8.GetBytes(
-                            "ServiHogarConnect-Clave-Segura-2026-123456")),
+                        Encoding.UTF8.GetBytes(jwtSigningKey)),
 
                 // Actualmente no usamos Issuer.
                 ValidateIssuer = false,

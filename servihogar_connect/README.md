@@ -65,18 +65,40 @@ al propio celular. Esta configuración se definió en
 
 ## Configuración de la URL del backend en Flutter
 
-La dirección del backend está centralizada en `lib/config/api_config.dart`, 
-en lugar de repetirse por todo el código, para facilitar el cambio entre entornos:
+La dirección del backend está centralizada en `lib/config/api_config.dart` y
+puede configurarse al ejecutar o compilar la aplicación:
 
 ```dart
 class ApiConfig {
-  static const String baseUrl = 'http://192.168.100.104:5125';
+  static const String baseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'http://127.0.0.1:5125',
+  );
 }
 ```
 
-**Importante:** esta IP corresponde a la dirección local de la PC de desarrollo 
-dentro de la red utilizada durante las pruebas. Si se ejecuta en otra red, debe 
-obtenerse la IP actual con `ipconfig` (Windows) y actualizarse en este archivo.
+Para usar el teléfono físico conectado por USB, crea primero un reenvío de
+puerto con Android Debug Bridge. La URL predeterminada de Flutter ya apunta a
+la dirección local reenviada:
+
+```powershell
+adb reverse tcp:5125 tcp:5125
+flutter run
+```
+
+El comando `adb reverse` debe repetirse si se desconecta el dispositivo o se
+reinicia ADB. En un emulador Android usa `10.0.2.2`:
+
+```powershell
+flutter run --dart-define=API_BASE_URL=http://10.0.2.2:5125
+```
+
+Si se usa el teléfono por Wi-Fi en lugar de USB, ambos equipos deben estar en
+la misma red y se debe indicar la IPv4 local de la PC:
+
+```powershell
+flutter run --dart-define=API_BASE_URL=http://DIRECCION_IPV4_DEL_EQUIPO:5125
+```
 
 ## Cómo ejecutar la app móvil
 
@@ -90,17 +112,51 @@ obtenerse la IP actual con `ipconfig` (Windows) y actualizarse en este archivo.
 ```
 3. Ejecutar la app en el dispositivo conectado:
 ```powershell
+   adb reverse tcp:5125 tcp:5125
    flutter run
 ```
 4. Durante el desarrollo, los cambios se pueden aplicar sin reiniciar la app 
    presionando `r` en la terminal (Hot Reload).
 
-## Endpoint consumido en este avance
+## Endpoints utilizados por la aplicación
 
-GET /api/v1/health
+| Método | Endpoint | Uso |
+|---|---|---|
+| GET | `/api/v1/health` | Comprobar disponibilidad de la API |
+| GET | `/api/categorias` | Cargar categorías activas del catálogo |
+| GET | `/api/Solicitudes` | Consultar solicitudes |
+| POST | `/api/Solicitudes` | Crear solicitud con su categoría |
 
+El catálogo se conserva localmente después de una carga exitosa para permitir
+seleccionarlo si el dispositivo queda offline. Las solicitudes pendientes
+guardan el identificador real de categoría para reutilizarlo durante la
+sincronización.
 
-Respuesta esperada:
+En la aplicación, el flujo principal conecta Inicio con el catálogo de
+servicios, el detalle de cada categoría y el formulario de solicitud. Al crear
+una solicitud desde ese flujo, se abre automáticamente su seguimiento en
+“Mis solicitudes”. El catálogo también está disponible desde la pestaña
+“Servicios” y permite buscar categorías.
+
+La navegación inferior conserva Inicio, Solicitudes, Servicios y Perfil como
+pestañas; las solicitudes mantienen sus filtros y estado al cambiar de pestaña.
+El detalle incluye una pantalla de seguimiento basada en los estados reales de
+la API y un centro de ayuda con información del funcionamiento offline. No se
+muestran datos ficticios de técnicos, tiempos estimados ni chat en tiempo real.
+
+El cliente también cuenta con una pestaña Actividad con totales por estado,
+resumen de servicios en progreso, tendencia semanal de las últimas solicitudes
+cargadas y actividad reciente. Si la API no está disponible, el panel usa los
+registros locales y las solicitudes pendientes de sincronización.
+
+La pantalla Inicio presenta un resumen de solicitudes, una gráfica semanal de
+la muestra cargada, accesos a actividad y solicitudes, categorías del catálogo,
+las solicitudes recientes, los pasos para pedir un servicio y las capacidades
+de ubicación, fotografía y uso sin conexión. Los datos se obtienen de la API y,
+si no está disponible, se muestran los registros de SQLite y la cola local de
+sincronización; el resumen identifica cuándo utiliza información local.
+
+Respuesta esperada del health check:
 
 ```json
 {
@@ -114,11 +170,12 @@ Respuesta esperada:
 ## Estructura del proyecto Flutter
 
 lib/
-├── main.dart # Punto de entrada y pantalla principal
-├── config/
-│ └── api_config.dart # URL base del backend, centralizada
-└── services/
-└── api_service.dart # Lógica de conexión HTTP con la API
+├── config/       # Configuración del entorno
+├── database/     # Base de datos local y cola offline (Drift)
+├── models/       # Modelos de solicitudes y categorías
+├── screens/      # Pantallas y flujos de usuario
+├── services/     # API, autenticación, catálogo y sincronización
+└── widgets/      # Componentes reutilizables
 
 
 ## Limitaciones conocidas

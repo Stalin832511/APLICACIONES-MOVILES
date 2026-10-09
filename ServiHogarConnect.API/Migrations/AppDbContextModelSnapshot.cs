@@ -13,6 +13,11 @@ namespace ServiHogarConnect.API.Migrations
     [DbContext(typeof(AppDbContext))]
     partial class AppDbContextModelSnapshot : ModelSnapshot
     {
+        internal static void BuildSnapshot(ModelBuilder modelBuilder)
+        {
+            new AppDbContextModelSnapshot().BuildModel(modelBuilder);
+        }
+
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
@@ -66,6 +71,11 @@ namespace ServiHogarConnect.API.Migrations
                     b.Property<string>("Descripcion")
                         .HasColumnType("text");
 
+                    b.Property<bool>("Activa")
+                        .ValueGeneratedOnAdd()
+                        .HasDefaultValue(true)
+                        .HasColumnType("boolean");
+
                     b.Property<string>("Nombre")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -113,6 +123,45 @@ namespace ServiHogarConnect.API.Migrations
                     b.ToTable("Cotizaciones");
                 });
 
+            modelBuilder.Entity("ServiHogarConnect.API.Models.EvidenciaServicio", b =>
+                {
+                    b.Property<int>("IdEvidencia")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("IdEvidencia"));
+
+                    b.Property<DateTime>("FechaCreacion")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("IdSolicitud")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("NombreArchivo")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("StorageKey")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<long>("TamanoBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("TipoContenido")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.HasKey("IdEvidencia");
+
+                    b.HasIndex("IdSolicitud");
+
+                    b.ToTable("EvidenciasServicio");
+                });
+
             modelBuilder.Entity("ServiHogarConnect.API.Models.MensajeChat", b =>
                 {
                     b.Property<int>("IdMensaje")
@@ -123,6 +172,9 @@ namespace ServiHogarConnect.API.Migrations
 
                     b.Property<DateTime>("FechaEnvio")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("IdSolicitud")
+                        .HasColumnType("integer");
 
                     b.Property<int>("IdEmisor")
                         .HasColumnType("integer");
@@ -137,6 +189,8 @@ namespace ServiHogarConnect.API.Migrations
                     b.HasKey("IdMensaje");
 
                     b.HasIndex("IdReceptor");
+
+                    b.HasIndex("IdSolicitud");
 
                     b.HasIndex("IdEmisor", "IdReceptor", "FechaEnvio");
 
@@ -330,6 +384,17 @@ namespace ServiHogarConnect.API.Migrations
                     b.Navigation("Usuario");
                 });
 
+            modelBuilder.Entity("ServiHogarConnect.API.Models.EvidenciaServicio", b =>
+                {
+                    b.HasOne("ServiHogarConnect.API.Models.SolicitudServicio", "Solicitud")
+                        .WithMany("Evidencias")
+                        .HasForeignKey("IdSolicitud")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Solicitud");
+                });
+
             modelBuilder.Entity("ServiHogarConnect.API.Models.Cotizacion", b =>
                 {
                     b.HasOne("ServiHogarConnect.API.Models.Profesional", "Profesional")
@@ -363,9 +428,16 @@ namespace ServiHogarConnect.API.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("ServiHogarConnect.API.Models.SolicitudServicio", "Solicitud")
+                        .WithMany("MensajesChat")
+                        .HasForeignKey("IdSolicitud")
+                        .OnDelete(DeleteBehavior.Cascade);
+
                     b.Navigation("Emisor");
 
                     b.Navigation("Receptor");
+
+                    b.Navigation("Solicitud");
                 });
 
             modelBuilder.Entity("ServiHogarConnect.API.Models.Profesional", b =>
@@ -424,6 +496,10 @@ namespace ServiHogarConnect.API.Migrations
             modelBuilder.Entity("ServiHogarConnect.API.Models.SolicitudServicio", b =>
                 {
                     b.Navigation("Cotizaciones");
+
+                    b.Navigation("Evidencias");
+
+                    b.Navigation("MensajesChat");
                 });
 
             modelBuilder.Entity("ServiHogarConnect.API.Models.Usuario", b =>
