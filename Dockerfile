@@ -13,14 +13,12 @@ COPY . .
 WORKDIR "/src/ServiHogarConnect.API"
 RUN dotnet publish "ServiHogarConnect.API.csproj" -c Release -o /app/out
 
-# 2. Etapa de ejecución usando el entorno en ejecución ligero
+# 2. Etapa de ejecución usando el entorno ligero de .NET
 FROM ://microsoft.com AS runtime
 WORKDIR /app
 COPY --from=build /app/out .
 
-# Configuración de puertos requerida por Render
 EXPOSE 8080
 ENV ASPNETCORE_URLS=http://+:8080
 
-# Comando para arrancar la API con el nombre exacto de tu DLL
 ENTRYPOINT ["dotnet", "ServiHogarConnect.API.dll"]
